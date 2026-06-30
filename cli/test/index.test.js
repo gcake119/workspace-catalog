@@ -45,4 +45,28 @@ test("scan writes a draft with inferred orientation and agent routing shape", as
       inferred_from: inferredFrom
     }
   });
+  assert.deepEqual(draft.tools[0].recommended_skills, {
+    value: [],
+    confidence: "low",
+    inferred_from: ["tool-a/README.md"]
+  });
+  assert.deepEqual(draft.tools[0].required_preflight_skills, {
+    value: [],
+    confidence: "low",
+    inferred_from: ["tool-a/README.md"]
+  });
+  assert.deepEqual(draft.tools[0].skill_rules, {
+    value: [],
+    confidence: "low",
+    inferred_from: ["tool-a/README.md"]
+  });
+  assert.deepEqual(draft.tools[0].disabled_skills, {
+    value: [],
+    confidence: "low",
+    inferred_from: ["tool-a/README.md"]
+  });
+  assert.deepEqual(draft.questions, [
+    "What role does tool-a play in this workspace?",
+    "Which skills should agents use or avoid when working on tool-a?"
+  ]);
 });

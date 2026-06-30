@@ -31,10 +31,15 @@ tools:
     spectraCollector: async () => ({ ok: false, reason: "spectra_unavailable", code: null })
   });
 
-  assert.equal(status.workspace.id, "sample");
-  assert.equal(status.tools[0].id, "tool-a");
-  assert.equal(status.tools[0].role, "source-tool");
-  assert.deepEqual(status.agent_routing.default_skills, ["decision-context"]);
-  assert.equal(status.git.ok, false);
-  assert.equal(status.spectra.ok, false);
+  assert.deepEqual(status.catalog_ref, {
+    path: "workspace.catalog.yaml",
+    schema_version: 1,
+    workspace_id: "sample",
+    tool_ids: ["tool-a"]
+  });
+  assert.equal(Object.hasOwn(status, "workspace"), false);
+  assert.equal(Object.hasOwn(status, "agent_routing"), false);
+  assert.equal(Object.hasOwn(status, "tools"), false);
+  assert.equal(status.live_status.git.ok, false);
+  assert.equal(status.live_status.spectra.ok, false);
 });

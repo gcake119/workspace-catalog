@@ -18,19 +18,16 @@ export async function createStatusSnapshot(root, options = {}) {
 
   return {
     generated_at: new Date().toISOString(),
-    workspace: catalog.workspace,
-    agent_routing: catalog.agent_routing ?? { default_skills: [], task_routes: [], rules: [] },
-    tools: catalog.tools.map((tool) => ({
-      id: tool.id,
-      path: tool.path,
-      role: tool.role,
-      recommended_skills: tool.recommended_skills ?? [],
-      required_preflight_skills: tool.required_preflight_skills ?? [],
-      skill_rules: tool.skill_rules ?? [],
-      disabled_skills: tool.disabled_skills ?? []
-    })),
-    git: await gitCollector(root),
-    spectra: await spectraCollector(root)
+    catalog_ref: {
+      path: "workspace.catalog.yaml",
+      schema_version: catalog.schema_version,
+      workspace_id: catalog.workspace.id,
+      tool_ids: catalog.tools.map((tool) => tool.id)
+    },
+    live_status: {
+      git: await gitCollector(root),
+      spectra: await spectraCollector(root)
+    }
   };
 }
 

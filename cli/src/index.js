@@ -58,9 +58,32 @@ async function runScan(workspace) {
         confidence: "low",
         inferred_from: tool.guidance
       },
-      primary_docs: tool.guidance
+      primary_docs: tool.guidance,
+      recommended_skills: {
+        value: [],
+        confidence: "low",
+        inferred_from: tool.guidance
+      },
+      required_preflight_skills: {
+        value: [],
+        confidence: "low",
+        inferred_from: tool.guidance
+      },
+      skill_rules: {
+        value: [],
+        confidence: "low",
+        inferred_from: tool.guidance
+      },
+      disabled_skills: {
+        value: [],
+        confidence: "low",
+        inferred_from: tool.guidance
+      }
     })),
-    questions: scan.tools.map((tool) => `What role does ${tool.path} play in this workspace?`)
+    questions: scan.tools.flatMap((tool) => [
+      `What role does ${tool.path} play in this workspace?`,
+      `Which skills should agents use or avoid when working on ${tool.path}?`
+    ])
   };
 
   const output = resolve(workspace, "workspace.catalog.draft.yaml");
