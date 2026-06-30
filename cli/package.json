@@ -1,8 +1,21 @@
 {
   "name": "@local/workspace-catalog",
   "version": "0.1.0",
+  "description": "Local-first workspace catalog tooling for split repo and agent collaboration.",
+  "license": "MIT",
   "private": true,
   "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gcake119/workspace-catalog.git"
+  },
+  "keywords": [
+    "agents",
+    "workspace",
+    "catalog",
+    "split-repo",
+    "developer-tools"
+  ],
   "bin": {
     "workspace-catalog": "src/index.js"
   },
