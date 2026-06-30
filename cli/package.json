@@ -1,0 +1,15 @@
+{
+  "name": "@local/workspace-catalog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "workspace-catalog": "src/index.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "yaml": "^2.5.1"
+  }
+}
