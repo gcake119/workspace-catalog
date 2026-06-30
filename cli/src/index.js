@@ -2,75 +2,96 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { stringify } from "yaml";
+import { detectCatalogDrift, writeDriftReport } from "./drift.js";
 import { scanWorkspace } from "./scanner.js";
+import { createStatusSnapshot, writeStatusSnapshot } from "./status.js";
+
+async function runScan(workspace) {
+  const scan = await scanWorkspace(workspace);
+  const draft = {
+    schema_version: 1,
+    workspace: {
+      id: {
+        value: workspace.split("/").filter(Boolean).at(-1),
+        confidence: "medium",
+        inferred_from: scan.root.guidance
+      },
+      name: {
+        value: workspace.split("/").filter(Boolean).at(-1),
+        confidence: "medium",
+        inferred_from: scan.root.guidance
+      },
+      purpose: {
+        value: "Review workspace docs to confirm purpose.",
+        confidence: "low",
+        inferred_from: scan.root.guidance
+      },
+      orientation: {
+        value: "Review workspace docs to confirm orientation.",
+        confidence: "low",
+        inferred_from: scan.root.guidance
+      }
+    },
+    agent_routing: {
+      default_skills: {
+        value: [],
+        confidence: "low",
+        inferred_from: scan.root.guidance
+      },
+      task_routes: {
+        value: [],
+        confidence: "low",
+        inferred_from: scan.root.guidance
+      },
+      rules: {
+        value: [],
+        confidence: "low",
+        inferred_from: scan.root.guidance
+      }
+    },
+    workflows: [],
+    tools: scan.tools.map((tool) => ({
+      id: tool.path,
+      path: `./${tool.path}`,
+      role: {
+        value: "unknown",
+        confidence: "low",
+        inferred_from: tool.guidance
+      },
+      primary_docs: tool.guidance
+    })),
+    questions: scan.tools.map((tool) => `What role does ${tool.path} play in this workspace?`)
+  };
+
+  const output = resolve(workspace, "workspace.catalog.draft.yaml");
+  await writeFile(output, stringify(draft));
+  console.log(`Wrote ${output}`);
+}
 
 async function main() {
   const command = process.argv[2];
   const workspace = resolve(process.argv[3] ?? process.cwd());
 
   if (command === "scan") {
-    const scan = await scanWorkspace(workspace);
-    const draft = {
-      schema_version: 1,
-      workspace: {
-        id: {
-          value: workspace.split("/").filter(Boolean).at(-1),
-          confidence: "medium",
-          inferred_from: scan.root.guidance
-        },
-        name: {
-          value: workspace.split("/").filter(Boolean).at(-1),
-          confidence: "medium",
-          inferred_from: scan.root.guidance
-        },
-        purpose: {
-          value: "Review workspace docs to confirm purpose.",
-          confidence: "low",
-          inferred_from: scan.root.guidance
-        },
-        orientation: {
-          value: "Review workspace docs to confirm orientation.",
-          confidence: "low",
-          inferred_from: scan.root.guidance
-        }
-      },
-      agent_routing: {
-        default_skills: {
-          value: [],
-          confidence: "low",
-          inferred_from: scan.root.guidance
-        },
-        task_routes: {
-          value: [],
-          confidence: "low",
-          inferred_from: scan.root.guidance
-        },
-        rules: {
-          value: [],
-          confidence: "low",
-          inferred_from: scan.root.guidance
-        }
-      },
-      workflows: [],
-      tools: scan.tools.map((tool) => ({
-        id: tool.path,
-        path: `./${tool.path}`,
-        role: {
-          value: "unknown",
-          confidence: "low",
-          inferred_from: tool.guidance
-        },
-        primary_docs: tool.guidance
-      })),
-      questions: scan.tools.map((tool) => `What role does ${tool.path} play in this workspace?`)
-    };
-
-    await writeFile(resolve(workspace, "workspace.catalog.draft.yaml"), stringify(draft));
-    console.log(`Wrote ${resolve(workspace, "workspace.catalog.draft.yaml")}`);
+    await runScan(workspace);
     return;
   }
 
-  console.error("Usage: workspace-catalog scan [workspace]");
+  if (command === "status") {
+    const snapshot = await createStatusSnapshot(workspace);
+    const output = await writeStatusSnapshot(workspace, snapshot);
+    console.log(`Wrote ${output}`);
+    return;
+  }
+
+  if (command === "drift") {
+    const report = await detectCatalogDrift(workspace);
+    const output = await writeDriftReport(workspace, report);
+    console.log(`Wrote ${output}`);
+    return;
+  }
+
+  console.error("Usage: workspace-catalog <scan|status|drift> [workspace]");
   process.exitCode = 1;
 }
 
