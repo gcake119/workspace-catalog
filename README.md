@@ -2,20 +2,38 @@
 
 Workspace Catalog is a local-first toolchain for helping Codex and other agents understand split repo workspaces before touching implementation details.
 
-It is designed for agent-assisted catalog authoring:
+## Phase 1-3 MVP
 
-1. Scan a workspace.
-2. Generate an inferred catalog draft with confidence and sources.
-3. Ask the user to confirm uncertain semantics.
-4. Write a confirmed `workspace.catalog.yaml`.
-5. Collect live status without overwriting confirmed semantics.
-6. Report drift when repo docs, specs, or decisions move away from the catalog.
+- Phase 1: Codex skill for agent-assisted catalog authoring.
+- Phase 2: preflight and drift reminder guidance.
+- Phase 3: reusable scan/status/drift CLI foundation.
 
-The first implementation target is Phase 1-3:
+Phase 4 static rendering and Phase 5 local web app are deferred.
 
-- Phase 1: Codex skill for workspace catalog authoring.
-- Phase 2: preflight and drift reminder hook guidance.
-- Phase 3: reusable scan/status/drift CLI or catalog agent.
+## Workflow
 
-Phase 4 static rendering and Phase 5 local web app are intentionally deferred.
+```text
+Scan workspace
+  -> Generate inferred catalog draft
+  -> Ask user to confirm uncertain semantics
+  -> Write confirmed workspace.catalog.yaml
+  -> Collect live status
+  -> Report drift
+```
 
+## CLI
+
+```bash
+pnpm --dir cli install
+node cli/src/index.js scan /path/to/workspace
+node cli/src/index.js status /path/to/workspace
+node cli/src/index.js drift /path/to/workspace
+```
+
+`scan` writes `workspace.catalog.draft.yaml`.
+
+`status` writes `.workspace-catalog/status.json`.
+
+`drift` writes `.workspace-catalog/drift-report.md`.
+
+Confirmed catalog semantics are never overwritten by collectors.

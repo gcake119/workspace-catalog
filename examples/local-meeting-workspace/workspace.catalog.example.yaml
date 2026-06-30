@@ -1,0 +1,122 @@
+schema_version: 1
+
+workspace:
+  id: local-meeting-workspace
+  name: Local Meeting Workspace
+  purpose: 個人知識管理工作流工具開發 workspace
+  orientation: >
+    Meeting Agent produces transcript-ready meeting artifacts.
+    Hermes Wiki Engine manages workspace-first knowledge review and publish boundaries.
+    OpenKnowledge is an editor/reference or future publish/editing target, not the current workspace SSOT.
+
+agent_routing:
+  default_skills:
+    - decision-context
+    - codebase-memory
+  task_routes:
+    - task_type: requirements_or_spec
+      use_skills:
+        - spectra-propose
+        - spectra-ask
+    - task_type: implementation
+      use_skills:
+        - spectra-apply
+    - task_type: debugging
+      use_skills:
+        - superpowers:systematic-debugging
+  rules:
+    - Spectra remains the requirements, specs, tasks, and archive SSOT.
+    - codebase-memory should be used before code discovery when available.
+
+workflows:
+  - id: meeting-to-knowledge
+    name: Meeting to Knowledge
+    summary: 會議錄音轉成 transcript-ready output，再進入 knowledge workspace review。
+    stages:
+      - source
+      - draft
+      - review
+      - knowledge
+      - publish
+    contracts:
+      - Meeting Agent does not own summary, approval, or writeback.
+      - Approve and publish are separate.
+
+tools:
+  - id: meeting-agent
+    name: Meeting Agent
+    path: ./meeting-agent
+    role: source-tool
+    purpose: Produces transcript-ready meeting artifacts.
+    participates_in:
+      - meeting-to-knowledge
+    confirmed_contracts:
+      - Emits manifest.json and transcript.md.
+      - Does not own LLM-wiki summary, approval, or writeback.
+    primary_docs:
+      - meeting-agent/README.md
+      - meeting-agent/docs/llm-wiki-handoff.md
+    recommended_skills:
+      - spectra-ask
+      - spectra-apply
+      - decision-context
+    required_preflight_skills:
+      - decision-context
+    skill_rules:
+      - Preserve transcript-ready as the primary completion boundary.
+      - Treat Hermes connector as optional and read-only.
+    disabled_skills: []
+
+  - id: hermes-wiki-engine
+    name: Hermes Wiki Engine
+    path: ./hermes-wiki-engine
+    role: knowledge-engine
+    purpose: Workspace-first knowledge engine and Workbench.
+    participates_in:
+      - meeting-to-knowledge
+    confirmed_contracts:
+      - Workspace knowledge is the organized knowledge SSOT.
+      - Approve and publish are separate.
+      - CLI, Workbench, Hermes, and LaunchDaemon share single core runtime.
+    primary_docs:
+      - hermes-wiki-engine/README.md
+      - hermes-wiki-engine/docs/decisions/ADR-0002-single-core-runtime-and-web-workbench.md
+      - hermes-wiki-engine/docs/decisions/ADR-0003-workspace-first-knowledge-architecture.md
+    recommended_skills:
+      - spectra-ask
+      - spectra-apply
+      - spectra-archive
+      - decision-context
+      - codebase-memory
+    required_preflight_skills:
+      - decision-context
+      - codebase-memory
+    skill_rules:
+      - Use Spectra for requirements, specs, apply work, and archives.
+      - Use codebase-memory before code discovery.
+      - Preserve workspace-first and single-core-runtime boundaries.
+    disabled_skills: []
+
+  - id: open-knowledge
+    name: OpenKnowledge
+    path: ./open-knowledge
+    role: editor-reference
+    purpose: Markdown knowledge editor reference and possible future editing or publish target.
+    participates_in: []
+    confirmed_contracts:
+      - Treat as an external mirror/reference unless a later catalog confirms workflow integration.
+    primary_docs:
+      - open-knowledge/README.md
+      - open-knowledge/AGENTS.md
+    recommended_skills:
+      - decision-context
+    required_preflight_skills: []
+    skill_rules:
+      - Treat as an external mirror/reference unless a later catalog confirms workflow integration.
+    disabled_skills: []
+
+agent_preflight:
+  - Read workspace.catalog.yaml before inferring project direction.
+  - Read tool AGENTS.md and primary docs before code changes.
+  - Use Spectra for active requirements and archive context.
+  - Use codebase-memory for structural code discovery.
