@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build Phase 1-3 of Workspace Catalog: a Codex skill, hook guidance, and reusable scan/status/drift CLI foundation for agent-assisted catalog authoring.
+**Goal:** Build Phase 1-3 of Workspace Catalog: a Codex skill, hook guidance, reusable scan/status/drift CLI foundation, and confirmed skill routing schema for agent-assisted catalog authoring.
 
 **Architecture:** The MVP separates confirmed semantics from inferred drafts and live status. A repo-local skill defines the human-in-the-loop workflow, Markdown hook guidance defines preflight/drift reminders, and a small Node.js CLI provides deterministic scan/status/drift automation using fixture-friendly collectors.
 
@@ -13,7 +13,7 @@
 ## File Structure
 
 - Create `skills/workspace-catalog/SKILL.md` for the reusable Codex skill workflow.
-- Create `skills/workspace-catalog/templates/workspace.catalog.yaml` as the confirmed catalog template.
+- Create `skills/workspace-catalog/templates/workspace.catalog.yaml` as the confirmed catalog template, including workspace-level and tool-level skill routing fields.
 - Create `skills/workspace-catalog/templates/workspace.catalog.draft.yaml` as the inferred draft template.
 - Create `hooks/workspace-catalog-preflight.md` for hook/reminder behavior.
 - Create `cli/package.json` for the CLI package metadata and scripts.
@@ -77,6 +77,7 @@ Read these sources when present:
 - `package.json`.
 - Git branch, recent commits, and dirty status.
 - codebase-memory project list when available.
+- Existing skill references in AGENTS, docs, and local workflow rules.
 
 ## Output Files
 
@@ -84,6 +85,26 @@ Read these sources when present:
 - `workspace.catalog.yaml`: confirmed catalog SSOT.
 - `.workspace-catalog/status.json`: live status snapshot.
 - `.workspace-catalog/drift-report.md`: drift findings.
+
+## Skill Routing To Capture
+
+Catalogs may include workspace-level routing and tool-level routing:
+
+```yaml
+agent_routing:
+  default_skills: []
+  task_routes: []
+  rules: []
+
+tools:
+  - id: example-tool
+    recommended_skills: []
+    required_preflight_skills: []
+    skill_rules: []
+    disabled_skills: []
+```
+
+Skill routing is confirmed semantics. Inferred routing must stay in draft until the user confirms it.
 
 ## Confirmation Rules
 
@@ -99,6 +120,7 @@ Examples:
 
 - Do not auto-confirm low-confidence inferences.
 - Do not let Git status override confirmed tool roles.
+- Do not let generic skill defaults override repo-local skill routing.
 - Do not replace Spectra, ADR, Git, or codebase-memory.
 - Do not build renderer or local web app during Phase 1-3 work.
 ```
@@ -115,6 +137,25 @@ workspace:
   name: Example Workspace
   purpose: Replace this after user confirmation.
   orientation: Replace this after user confirmation.
+
+agent_routing:
+  default_skills:
+    - decision-context
+    - codebase-memory
+  task_routes:
+    - task_type: requirements_or_spec
+      use_skills:
+        - spectra-propose
+        - spectra-ask
+    - task_type: implementation
+      use_skills:
+        - spectra-apply
+    - task_type: debugging
+      use_skills:
+        - superpowers:systematic-debugging
+  rules:
+    - Spectra remains the requirements, specs, tasks, and archive SSOT.
+    - codebase-memory should be used before code discovery when available.
 
 workflows: []
 
@@ -147,6 +188,14 @@ workspace:
     value: Replace with inferred purpose.
     confidence: low
     inferred_from: []
+
+agent_routing:
+  default_skills:
+    value: []
+    confidence: low
+    inferred_from: []
+  task_routes: []
+  rules: []
 
 workflows: []
 
@@ -591,6 +640,11 @@ workspace:
   name: Sample
   purpose: Confirmed purpose
 workflows: []
+agent_routing:
+  default_skills:
+    - decision-context
+  task_routes: []
+  rules: []
 tools:
   - id: tool-a
     path: ./tool-a
@@ -605,6 +659,7 @@ tools:
   assert.equal(status.workspace.id, "sample");
   assert.equal(status.tools[0].id, "tool-a");
   assert.equal(status.tools[0].role, "source-tool");
+  assert.deepEqual(status.agent_routing.default_skills, ["decision-context"]);
   assert.equal(status.git.ok, false);
   assert.equal(status.spectra.ok, false);
 });
@@ -636,10 +691,15 @@ export async function createStatusSnapshot(root, options = {}) {
   return {
     generated_at: new Date().toISOString(),
     workspace: catalog.workspace,
+    agent_routing: catalog.agent_routing ?? { default_skills: [], task_routes: [], rules: [] },
     tools: catalog.tools.map((tool) => ({
       id: tool.id,
       path: tool.path,
-      role: tool.role
+      role: tool.role,
+      recommended_skills: tool.recommended_skills ?? [],
+      required_preflight_skills: tool.required_preflight_skills ?? [],
+      skill_rules: tool.skill_rules ?? [],
+      disabled_skills: tool.disabled_skills ?? []
     })),
     git: await gitCollector(root),
     spectra: await spectraCollector(root)
@@ -872,6 +932,25 @@ workspace:
     Hermes Wiki Engine manages workspace-first knowledge review and publish boundaries.
     OpenKnowledge is an editor/reference or future publish/editing target, not the current workspace SSOT.
 
+agent_routing:
+  default_skills:
+    - decision-context
+    - codebase-memory
+  task_routes:
+    - task_type: requirements_or_spec
+      use_skills:
+        - spectra-propose
+        - spectra-ask
+    - task_type: implementation
+      use_skills:
+        - spectra-apply
+    - task_type: debugging
+      use_skills:
+        - superpowers:systematic-debugging
+  rules:
+    - Spectra remains the requirements, specs, tasks, and archive SSOT.
+    - codebase-memory should be used before code discovery when available.
+
 workflows:
   - id: meeting-to-knowledge
     name: Meeting to Knowledge
@@ -900,6 +979,16 @@ tools:
     primary_docs:
       - meeting-agent/README.md
       - meeting-agent/docs/llm-wiki-handoff.md
+    recommended_skills:
+      - spectra-ask
+      - spectra-apply
+      - decision-context
+    required_preflight_skills:
+      - decision-context
+    skill_rules:
+      - Preserve transcript-ready as the primary completion boundary.
+      - Treat Hermes connector as optional and read-only.
+    disabled_skills: []
 
   - id: hermes-wiki-engine
     name: Hermes Wiki Engine
@@ -916,6 +1005,20 @@ tools:
       - hermes-wiki-engine/README.md
       - hermes-wiki-engine/docs/decisions/ADR-0002-single-core-runtime-and-web-workbench.md
       - hermes-wiki-engine/docs/decisions/ADR-0003-workspace-first-knowledge-architecture.md
+    recommended_skills:
+      - spectra-ask
+      - spectra-apply
+      - spectra-archive
+      - decision-context
+      - codebase-memory
+    required_preflight_skills:
+      - decision-context
+      - codebase-memory
+    skill_rules:
+      - Use Spectra for requirements, specs, apply work, and archives.
+      - Use codebase-memory before code discovery.
+      - Preserve workspace-first and single-core-runtime boundaries.
+    disabled_skills: []
 
   - id: open-knowledge
     name: OpenKnowledge
@@ -928,6 +1031,12 @@ tools:
     primary_docs:
       - open-knowledge/README.md
       - open-knowledge/AGENTS.md
+    recommended_skills:
+      - decision-context
+    required_preflight_skills: []
+    skill_rules:
+      - Treat as an external mirror/reference unless a later catalog confirms workflow integration.
+    disabled_skills: []
 
 agent_preflight:
   - Read workspace.catalog.yaml before inferring project direction.
@@ -1015,6 +1124,7 @@ git commit -m "docs: 加入 local meeting workspace catalog 範例"
 
 - Phase 1-3 are implemented without renderer or local web app.
 - `workspace.catalog.yaml` is treated as confirmed SSOT.
+- Skill routing is represented in `agent_routing` and tool-level skill fields.
 - `workspace.catalog.draft.yaml` preserves inference confidence and sources.
 - Live status writes to `.workspace-catalog/status.json`.
 - Drift report does not mutate confirmed catalog.

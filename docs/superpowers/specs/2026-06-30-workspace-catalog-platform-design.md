@@ -23,6 +23,7 @@
 第一版要解決：
 
 - agent-assisted catalog authoring：由 agent 掃描 workspace 並產生 draft，不要求使用者從空白手寫 YAML。
+- skill routing catalog：明確記錄 workspace／tool／task 應使用、應先使用、或應避免使用的 skills。
 - confirmed catalog SSOT：使用者確認後才寫入 `workspace.catalog.yaml`。
 - preflight discipline：後續 agent 進 workspace 時先讀 catalog，再讀特定 repo。
 - drift reminder：當 AGENTS、README、ADR、Spectra archive 或相關文件變動時，提醒 catalog 可能需要更新。
@@ -73,6 +74,7 @@ Scan workspace
 - handoff contracts。
 - design priorities。
 - agent preflight。
+- skill routing。
 - forbidden shortcuts。
 
 collector 不得覆蓋這些欄位。
@@ -121,6 +123,28 @@ workspace:
     這個 workspace 用來開發 Meeting Agent、Hermes Wiki Engine
     與相關 knowledge workflow tooling。
 
+agent_routing:
+  default_skills:
+    - decision-context
+    - codebase-memory
+  task_routes:
+    - task_type: requirements_or_spec
+      use_skills:
+        - spectra-propose
+        - spectra-ask
+    - task_type: implementation
+      use_skills:
+        - spectra-apply
+    - task_type: debugging
+      use_skills:
+        - superpowers:systematic-debugging
+    - task_type: security_review
+      use_skills:
+        - codex-security:security-scan
+  rules:
+    - Spectra remains the requirements, specs, tasks, and archive SSOT.
+    - codebase-memory should be used before code discovery when available.
+
 workflows:
   - id: meeting-to-knowledge
     name: Meeting to Knowledge
@@ -149,6 +173,16 @@ tools:
     primary_docs:
       - meeting-agent/README.md
       - meeting-agent/docs/llm-wiki-handoff.md
+    recommended_skills:
+      - spectra-ask
+      - spectra-apply
+      - decision-context
+    required_preflight_skills:
+      - decision-context
+    skill_rules:
+      - Preserve transcript-ready as the primary completion boundary.
+      - Treat Hermes connector as optional and read-only.
+    disabled_skills: []
     status_sources:
       git: true
       spectra: true
@@ -168,6 +202,20 @@ tools:
       - hermes-wiki-engine/README.md
       - hermes-wiki-engine/docs/decisions/ADR-0002-single-core-runtime-and-web-workbench.md
       - hermes-wiki-engine/docs/decisions/ADR-0003-workspace-first-knowledge-architecture.md
+    recommended_skills:
+      - spectra-ask
+      - spectra-apply
+      - spectra-archive
+      - decision-context
+      - codebase-memory
+    required_preflight_skills:
+      - decision-context
+      - codebase-memory
+    skill_rules:
+      - Use Spectra for requirements, specs, apply work, and archives.
+      - Use codebase-memory before code discovery.
+      - Preserve workspace-first and single-core-runtime boundaries.
+    disabled_skills: []
     status_sources:
       git: true
       spectra: true
@@ -198,6 +246,8 @@ Phase 1-3 不必實作 renderer，但輸出應能支援未來三種頁面：
 - related workflows。
 - primary docs。
 - live development status。
+- recommended and required skills。
+- skill rules and disabled skills。
 - suggested next reads。
 - suggested verification commands。
 
@@ -225,16 +275,18 @@ Skill 行為：
 1. 掃描 workspace 結構。
 2. 讀取 root AGENTS、子 repo AGENTS、README、Spectra、ADR、docs、codebase-memory project list。
 3. 產生 `workspace.catalog.draft.yaml`。
-4. 每個推論標示 `confidence` 與 `inferred_from`。
-5. 列出需要使用者確認的語意問題。
-6. 使用者確認後才寫入 `workspace.catalog.yaml`。
-7. 若 workspace 已有 confirmed catalog，優先讀取並只產生 drift／update draft。
+4. 推論 workspace-level `agent_routing` 與 tool-level skill rules。
+5. 每個推論標示 `confidence` 與 `inferred_from`。
+6. 列出需要使用者確認的語意問題。
+7. 使用者確認後才寫入 `workspace.catalog.yaml`。
+8. 若 workspace 已有 confirmed catalog，優先讀取並只產生 drift／update draft。
 
 Phase 1 成功條件：
 
 - 可在任一 split repo workspace 中指導 agent 產生 catalog draft。
 - 不要求使用者從空白手寫 YAML。
 - 不把未確認推論寫入 confirmed catalog。
+- skill routing 能回答 workspace／tool／task 應優先使用哪些 skills。
 
 ## Phase 2：Hook／提醒規則
 
@@ -346,5 +398,6 @@ Phase 5 不應引入 hosted backend 或 cloud sync 作為預設。
 - Phase 4-5 明確留規格，不進 MVP。
 - 文件說明 confirmed catalog、inferred draft、live status 的權威性差異。
 - 文件說明 skill、hook、CLI／agent 的分工。
+- 文件把 skill routing 納入 catalog schema，而不是只放在 prose guidance。
 - 文件沒有要求使用者手動從空白填寫 catalog。
 - 文件保留成熟領域映射：developer portal、service catalog、ADR、Spectra、lineage、code intelligence。
