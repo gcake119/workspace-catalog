@@ -10,6 +10,7 @@ import { createPreflightReport, formatPreflightReport, isDriftRelevantPath } fro
 
 const execFileAsync = promisify(execFile);
 const hookPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "hooks", "workspace-catalog-preflight.js");
+const sessionHookPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "hooks", "workspace-catalog-session-preflight.js");
 
 test("createPreflightReport reminds agents to read an existing catalog", async () => {
   const root = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
@@ -95,6 +96,28 @@ test("workspace catalog hook wrapper prints preflight reminders", async () => {
 
   assert.match(result.stdout, /WORKSPACE_CATALOG_READ_REQUIRED/);
   assert.match(result.stdout, /WORKSPACE_CATALOG_DRIFT_POSSIBLE/);
+});
+
+test("workspace catalog session hook is quiet outside initialized workspaces", async () => {
+  const root = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  await mkdir(root, { recursive: true });
+
+  const result = await execFileAsync(process.execPath, [sessionHookPath, root]);
+
+  assert.equal(result.stdout, "");
+  assert.equal(result.stderr, "");
+});
+
+test("workspace catalog session hook runs only after finding a confirmed catalog", async () => {
+  const root = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  const child = join(root, "tool-a", "src");
+  await mkdir(child, { recursive: true });
+  await writeFile(join(root, "workspace.catalog.yaml"), "schema_version: 1\n");
+
+  const result = await execFileAsync(process.execPath, [sessionHookPath, child]);
+
+  assert.match(result.stdout, /WORKSPACE_CATALOG_READ_REQUIRED/);
+  assert.equal(result.stderr, "");
 });
 
 test("isDriftRelevantPath matches workspace guidance and spec paths", () => {

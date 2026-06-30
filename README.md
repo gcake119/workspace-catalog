@@ -88,9 +88,27 @@ hooks/workspace-catalog-preflight.js /path/to/workspace --changed AGENTS.md
 hooks/workspace-catalog-preflight.js /path/to/workspace --event spectra-archive
 ```
 
-Hook 只提醒，不會改檔案。
+手動 hook 會檢查指定 workspace。Session hook 採 strict mode：只有目前路徑往上找得到 `workspace.catalog.yaml`，才會執行提醒；找不到就安靜跳過。
 
-The hook only prints reminders. It does not edit files.
+The manual hook checks a specific workspace. The session hook uses strict mode: it only runs when it can find `workspace.catalog.yaml` by walking up from the current path; otherwise it stays quiet.
+
+```bash
+hooks/workspace-catalog-session-preflight.js /path/inside/initialized/workspace
+```
+
+Hook 只提醒，不會改檔案，也不會自動修改 `~/.codex/hooks.json`。
+
+Hooks only print reminders. They do not edit files or automatically modify `~/.codex/hooks.json`.
+
+Example Codex `SessionStart` hook:
+
+```json
+{
+  "type": "command",
+  "command": "'/path/to/workspace-catalog/hooks/workspace-catalog-session-preflight.js'",
+  "timeout": 5
+}
+```
 
 ## 主要檔案／Main Files
 
