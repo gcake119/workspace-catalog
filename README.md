@@ -87,6 +87,13 @@ cli/src/index.js
 examples/local-meeting-workspace/workspace.catalog.example.yaml
 ```
 
+## Community
+
+- License: MIT
+- Contributions: see `CONTRIBUTING.md`
+- Security: see `SECURITY.md`
+- Conduct: see `CODE_OF_CONDUCT.md`
+
 ## Boundaries
 
 Phase 1-3 includes skill, hook, and CLI only.
