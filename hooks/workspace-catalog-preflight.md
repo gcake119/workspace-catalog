@@ -1,6 +1,22 @@
 # Workspace Catalog Preflight Hook
 
-This hook guidance describes when Codex should remind the user to read or refresh a workspace catalog.
+This hook reminds Codex to read or refresh a workspace catalog before it infers split repo roles, workflow boundaries, or active project direction.
+
+## Executable
+
+Use the executable wrapper:
+
+```bash
+node hooks/workspace-catalog-preflight.js /path/to/workspace
+node hooks/workspace-catalog-preflight.js /path/to/workspace --changed AGENTS.md
+node hooks/workspace-catalog-preflight.js /path/to/workspace --event spectra-archive
+```
+
+Equivalent CLI command:
+
+```bash
+node cli/src/index.js preflight /path/to/workspace
+```
 
 ## Trigger Moments
 

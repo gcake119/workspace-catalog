@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { stringify } from "yaml";
 import { detectCatalogDrift, writeDriftReport } from "./drift.js";
+import { createPreflightReport, formatPreflightReport, parsePreflightArgs } from "./preflight.js";
 import { evidenceSummary, scanWorkspace } from "./scanner.js";
 import { createStatusSnapshot, writeStatusSnapshot } from "./status.js";
 
@@ -115,7 +116,14 @@ async function main() {
     return;
   }
 
-  console.error("Usage: workspace-catalog <scan|status|drift> [workspace]");
+  if (command === "preflight") {
+    const options = parsePreflightArgs(process.argv.slice(4));
+    const report = await createPreflightReport(workspace, options);
+    console.log(formatPreflightReport(report));
+    return;
+  }
+
+  console.error("Usage: workspace-catalog <scan|status|drift|preflight> [workspace]");
   process.exitCode = 1;
 }
 
