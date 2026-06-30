@@ -3,6 +3,13 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 
+function getErrorCode(error) {
+  if (error && typeof error === "object" && "code" in error) {
+    return error.code ?? null;
+  }
+  return null;
+}
+
 export async function collectGitStatus(cwd) {
   try {
     const branch = await execFileAsync("git", ["-C", cwd, "branch", "--show-current"]);
@@ -18,7 +25,8 @@ export async function collectGitStatus(cwd) {
   } catch (error) {
     return {
       ok: false,
-      error: error instanceof Error ? error.message : String(error)
+      reason: "git_unavailable",
+      code: getErrorCode(error)
     };
   }
 }

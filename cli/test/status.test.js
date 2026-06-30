@@ -27,8 +27,8 @@ tools:
 `);
 
   const status = await createStatusSnapshot(root, {
-    gitCollector: async () => ({ ok: false, error: "not a git repo" }),
-    spectraCollector: async () => ({ ok: false, error: "spectra unavailable" })
+    gitCollector: async () => ({ ok: false, reason: "git_unavailable", code: null }),
+    spectraCollector: async () => ({ ok: false, reason: "spectra_unavailable", code: null })
   });
 
   assert.equal(status.workspace.id, "sample");

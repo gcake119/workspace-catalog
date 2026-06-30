@@ -1,5 +1,5 @@
 import { stat, writeFile, mkdir, readFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { isAbsolute, relative, resolve } from "node:path";
 import { parse } from "yaml";
 
 async function exists(path) {
@@ -12,13 +12,34 @@ async function exists(path) {
   }
 }
 
+function resolveWorkspacePath(root, path) {
+  const rawPath = String(path ?? "").trim();
+  if (!rawPath || isAbsolute(rawPath)) return { ok: false };
+
+  const rootPath = resolve(root);
+  const candidate = resolve(rootPath, rawPath.replace(/^\.\//, ""));
+  const rel = relative(rootPath, candidate);
+
+  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return { ok: false };
+  return { ok: true, path: candidate };
+}
+
 export async function detectCatalogDrift(root) {
   const catalog = parse(await readFile(resolve(root, "workspace.catalog.yaml"), "utf8"));
   const items = [];
 
   for (const tool of catalog.tools ?? []) {
-    const normalizedPath = String(tool.path ?? "").replace(/^\.\//, "");
-    if (!normalizedPath || !(await exists(resolve(root, normalizedPath)))) {
+    const resolved = resolveWorkspacePath(root, tool.path);
+    if (!resolved.ok) {
+      items.push({
+        code: "CATALOG_TOOL_PATH_INVALID",
+        message: `Catalog tool path is invalid: ${tool.path ?? ""}`,
+        tool_id: tool.id
+      });
+      continue;
+    }
+
+    if (!(await exists(resolved.path))) {
       items.push({
         code: "CATALOG_TOOL_PATH_MISSING",
         message: `Catalog tool path is missing: ${tool.path}`,
