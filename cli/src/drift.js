@@ -1,6 +1,8 @@
 import { stat, writeFile, mkdir, readFile } from "node:fs/promises";
-import { isAbsolute, relative, resolve } from "node:path";
+import { join, resolve } from "node:path";
 import { parse } from "yaml";
+import { flattenEvidence, scanWorkspace } from "./scanner.js";
+import { resolveWorkspacePath } from "./workspace-path.js";
 
 async function exists(path) {
   try {
@@ -12,20 +14,46 @@ async function exists(path) {
   }
 }
 
-function resolveWorkspacePath(root, path) {
-  const rawPath = String(path ?? "").trim();
-  if (!rawPath || isAbsolute(rawPath)) return { ok: false };
+async function getMtimeMs(path) {
+  try {
+    return (await stat(path)).mtimeMs;
+  } catch (error) {
+    if (error && error.code === "ENOENT") return null;
+    throw error;
+  }
+}
 
-  const rootPath = resolve(root);
-  const candidate = resolve(rootPath, rawPath.replace(/^\.\//, ""));
-  const rel = relative(rootPath, candidate);
+function catalogEvidenceSources(catalog) {
+  return new Set([
+    ...(catalog.evidence_sources ?? []),
+    ...(catalog.primary_docs ?? []),
+    ...(catalog.tools ?? []).flatMap((tool) => tool.primary_docs ?? []),
+    ...(catalog.workflows ?? []).flatMap((workflow) => workflow.primary_docs ?? [])
+  ]);
+}
 
-  if (!rel || rel.startsWith("..") || isAbsolute(rel)) return { ok: false };
-  return { ok: true, path: candidate };
+function isDocsOrSpecSource(source) {
+  return [
+    "AGENTS.md",
+    "README.md",
+    ".cursorrules",
+    ".cursor/rules/",
+    "docs/decisions/",
+    "openspec/specs/",
+    "openspec/changes/",
+    "docs/superpowers/specs/",
+    "docs/superpowers/plans/",
+    "package.json"
+  ].some((pattern) => source === pattern || source.includes(`/${pattern}`) || source.startsWith(pattern));
 }
 
 export async function detectCatalogDrift(root) {
-  const catalog = parse(await readFile(resolve(root, "workspace.catalog.yaml"), "utf8"));
+  const catalogPath = resolve(root, "workspace.catalog.yaml");
+  const catalog = parse(await readFile(catalogPath, "utf8"));
+  const catalogMtime = await getMtimeMs(catalogPath);
+  const scan = await scanWorkspace(root);
+  const currentEvidence = flattenEvidence(scan);
+  const catalogSources = catalogEvidenceSources(catalog);
   const items = [];
 
   for (const tool of catalog.tools ?? []) {
@@ -48,8 +76,33 @@ export async function detectCatalogDrift(root) {
     }
   }
 
+  for (const source of currentEvidence) {
+    if (!catalogSources.has(source)) {
+      items.push({
+        code: "CATALOG_EVIDENCE_SOURCE_NEW",
+        message: `Workspace evidence source is not referenced by the confirmed catalog: ${source}`,
+        source
+      });
+    }
+
+    if (isDocsOrSpecSource(source)) {
+      const sourceMtime = await getMtimeMs(join(root, source));
+      if (catalogMtime !== null && sourceMtime !== null && sourceMtime > catalogMtime) {
+        items.push({
+          code: "CATALOG_EVIDENCE_NEWER_THAN_CATALOG",
+          message: `Workspace evidence changed after the confirmed catalog: ${source}`,
+          source
+        });
+      }
+    }
+  }
+
   return {
     generated_at: new Date().toISOString(),
+    evidence: {
+      scanned_sources: currentEvidence,
+      codebase_memory: scan.codebase_memory
+    },
     items
   };
 }
@@ -63,7 +116,15 @@ export async function writeDriftReport(root, report) {
     "",
     `Generated: ${report.generated_at}`,
     "",
-    ...report.items.map((item) => `- ${item.code}: ${item.message}`)
+    "## Scanned Evidence",
+    "",
+    ...(report.evidence?.scanned_sources ?? []).map((source) => `- ${source}`),
+    "",
+    "## Findings",
+    "",
+    ...(report.items.length > 0
+      ? report.items.map((item) => `- ${item.code}: ${item.message}`)
+      : ["- No drift items detected."])
   ];
   await writeFile(outputPath, `${lines.join("\n")}\n`);
   return outputPath;

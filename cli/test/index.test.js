@@ -69,4 +69,8 @@ test("scan writes a draft with inferred orientation and agent routing shape", as
     "What role does tool-a play in this workspace?",
     "Which skills should agents use or avoid when working on tool-a?"
   ]);
+  assert.deepEqual(draft.evidence.codebase_memory, {
+    ok: false,
+    reason: "codebase_memory_unavailable"
+  });
 });

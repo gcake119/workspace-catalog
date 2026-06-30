@@ -3,7 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { stringify } from "yaml";
 import { detectCatalogDrift, writeDriftReport } from "./drift.js";
-import { scanWorkspace } from "./scanner.js";
+import { evidenceSummary, scanWorkspace } from "./scanner.js";
 import { createStatusSnapshot, writeStatusSnapshot } from "./status.js";
 
 async function runScan(workspace) {
@@ -83,7 +83,8 @@ async function runScan(workspace) {
     questions: scan.tools.flatMap((tool) => [
       `What role does ${tool.path} play in this workspace?`,
       `Which skills should agents use or avoid when working on ${tool.path}?`
-    ])
+    ]),
+    evidence: evidenceSummary(scan)
   };
 
   const output = resolve(workspace, "workspace.catalog.draft.yaml");
