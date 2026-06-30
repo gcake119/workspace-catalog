@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
-import { createPreflightReport, isDriftRelevantPath } from "../src/preflight.js";
+import { createPreflightReport, formatPreflightReport, isDriftRelevantPath } from "../src/preflight.js";
 
 const execFileAsync = promisify(execFile);
 const hookPath = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "hooks", "workspace-catalog-preflight.js");
@@ -33,6 +33,34 @@ test("createPreflightReport suggests catalog authoring for split workspaces with
   assert.deepEqual(report.reminders.map((reminder) => reminder.code), [
     "WORKSPACE_CATALOG_MISSING"
   ]);
+});
+
+test("formatPreflightReport explains missing docs in plain language", async () => {
+  const root = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  await mkdir(join(root, "tool-a"), { recursive: true });
+  await writeFile(join(root, "tool-a", "README.md"), "# Tool A\n");
+
+  const report = await createPreflightReport(root);
+  const formatted = formatPreflightReport(report);
+
+  assert.match(formatted, /WORKSPACE_CATALOG_MISSING/);
+  assert.match(formatted, /少了一些基本決策文件/);
+  assert.match(formatted, /AGENTS\.md: 新增 AGENTS\.md/);
+  assert.match(formatted, /docs\/decisions\/index\.md: 新增 docs\/decisions\/index\.md/);
+});
+
+test("createPreflightReport reminds users when a workspace has no basic docs yet", async () => {
+  const root = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  await mkdir(root, { recursive: true });
+
+  const report = await createPreflightReport(root);
+  const formatted = formatPreflightReport(report);
+
+  assert.deepEqual(report.reminders.map((reminder) => reminder.code), [
+    "WORKSPACE_DOCUMENTATION_MISSING"
+  ]);
+  assert.match(formatted, /缺少基本文件/);
+  assert.match(formatted, /README\.md: 新增 README\.md/);
 });
 
 test("createPreflightReport reports possible drift for changed guidance files", async () => {

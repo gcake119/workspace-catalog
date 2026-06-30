@@ -1,9 +1,11 @@
 import { stat } from "node:fs/promises";
 import { resolve } from "node:path";
+import { formatDocumentationGuidance } from "./documentation-guidance.js";
 import { scanWorkspace } from "./scanner.js";
 
 const READ_CATALOG_MESSAGE = "Read workspace.catalog.yaml before inferring tool roles, workflow boundaries, or active project direction.";
 const MISSING_CATALOG_MESSAGE = "Use the workspace-catalog skill to scan this workspace and produce a draft catalog for user confirmation.";
+const MISSING_DOCUMENTATION_MESSAGE = "這個 workspace 還缺少基本文件，agent 會比較難判斷專案決策。";
 const DRIFT_MESSAGE = "Catalog drift may exist because workspace guidance, ADRs, README, or Spectra artifacts changed. Run workspace-catalog drift or refresh the draft before relying on old catalog semantics.";
 
 const DRIFT_EXACT_FILES = new Set([
@@ -83,7 +85,14 @@ export async function createPreflightReport(root, options = {}) {
     if (scan.tools.length > 0) {
       reminders.push({
         code: "WORKSPACE_CATALOG_MISSING",
-        message: MISSING_CATALOG_MESSAGE
+        message: MISSING_CATALOG_MESSAGE,
+        documentation_guidance: scan.documentation_guidance
+      });
+    } else if (!scan.documentation_guidance.ok) {
+      reminders.push({
+        code: "WORKSPACE_DOCUMENTATION_MISSING",
+        message: MISSING_DOCUMENTATION_MESSAGE,
+        documentation_guidance: scan.documentation_guidance
       });
     }
   }
@@ -123,6 +132,9 @@ export function formatPreflightReport(report) {
   }
 
   return report.reminders
-    .map((reminder) => `${reminder.code}: ${reminder.message}`)
+    .map((reminder) => [
+      `${reminder.code}: ${reminder.message}`,
+      ...formatDocumentationGuidance(reminder.documentation_guidance)
+    ].join("\n"))
     .join("\n");
 }

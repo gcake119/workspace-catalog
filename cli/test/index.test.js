@@ -69,6 +69,11 @@ test("scan writes a draft with inferred orientation and agent routing shape", as
     "What role does tool-a play in this workspace?",
     "Which skills should agents use or avoid when working on tool-a?"
   ]);
+  assert.equal(draft.recommended_next_steps.ok, false);
+  assert.deepEqual(draft.recommended_next_steps.missing.map((item) => item.code), [
+    "decision_index_missing",
+    "specs_missing"
+  ]);
   assert.deepEqual(draft.evidence.codebase_memory, {
     ok: false,
     reason: "codebase_memory_unavailable"

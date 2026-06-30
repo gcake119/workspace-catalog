@@ -54,4 +54,25 @@ test("scanWorkspace finds root and child repo guidance files", async (t) => {
     ok: false,
     reason: "codebase_memory_unavailable"
   });
+  assert.equal(result.documentation_guidance.ok, false);
+  assert.deepEqual(result.documentation_guidance.missing.map((item) => item.code), [
+    "decision_index_missing"
+  ]);
+});
+
+test("scanWorkspace suggests plain-language next steps when key docs are missing", async () => {
+  const root = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  await mkdir(root, { recursive: true });
+
+  const result = await scanWorkspace(root);
+
+  assert.equal(result.documentation_guidance.ok, false);
+  assert.match(result.documentation_guidance.summary, /少了一些基本決策文件/);
+  assert.deepEqual(result.documentation_guidance.missing.map((item) => item.code), [
+    "agents_md_missing",
+    "readme_missing",
+    "decision_index_missing",
+    "specs_missing"
+  ]);
+  assert.match(result.documentation_guidance.missing[0].next_step, /新增 AGENTS\.md/);
 });

@@ -85,6 +85,7 @@ async function runScan(workspace) {
       `What role does ${tool.path} play in this workspace?`,
       `Which skills should agents use or avoid when working on ${tool.path}?`
     ]),
+    recommended_next_steps: scan.documentation_guidance,
     evidence: evidenceSummary(scan)
   };
 

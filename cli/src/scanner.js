@@ -1,5 +1,6 @@
 import { readdir, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
+import { createDocumentationGuidance } from "./documentation-guidance.js";
 
 const ROOT_GUIDANCE_FILES = ["AGENTS.md", "README.md", ".cursorrules", "package.json"];
 const GUIDANCE_FILES = [
@@ -177,12 +178,17 @@ export async function scanWorkspace(root) {
     }
   }
 
-  return {
+  const scan = {
     root: {
       path: ".",
       guidance: rootGuidance
     },
     tools,
     codebase_memory: await collectCodebaseMemoryPresence(root)
+  };
+
+  return {
+    ...scan,
+    documentation_guidance: createDocumentationGuidance(scan)
   };
 }
