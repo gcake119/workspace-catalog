@@ -7,23 +7,10 @@ workspace:
   orientation: Replace this after user confirmation.
 
 agent_routing:
-  default_skills:
-    - decision-context
-    - codebase-memory
-  task_routes:
-    - task_type: requirements_or_spec
-      use_skills:
-        - spectra-propose
-        - spectra-ask
-    - task_type: implementation
-      use_skills:
-        - spectra-apply
-    - task_type: debugging
-      use_skills:
-        - superpowers:systematic-debugging
-  rules:
-    - Spectra remains the requirements, specs, tasks, and archive SSOT.
-    - codebase-memory should be used before code discovery when available.
+  # Fill only after user confirmation.
+  default_skills: []
+  task_routes: []
+  rules: []
 
 workflows: []
 

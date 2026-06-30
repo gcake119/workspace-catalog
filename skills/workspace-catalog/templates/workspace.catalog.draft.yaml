@@ -13,14 +13,24 @@ workspace:
     value: Replace with inferred purpose.
     confidence: low
     inferred_from: []
+  orientation:
+    value: Replace with inferred orientation.
+    confidence: low
+    inferred_from: []
 
 agent_routing:
   default_skills:
     value: []
     confidence: low
     inferred_from: []
-  task_routes: []
-  rules: []
+  task_routes:
+    value: []
+    confidence: low
+    inferred_from: []
+  rules:
+    value: []
+    confidence: low
+    inferred_from: []
 
 workflows: []
 
