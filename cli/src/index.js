@@ -27,6 +27,28 @@ async function main() {
           value: "Review workspace docs to confirm purpose.",
           confidence: "low",
           inferred_from: scan.root.guidance
+        },
+        orientation: {
+          value: "Review workspace docs to confirm orientation.",
+          confidence: "low",
+          inferred_from: scan.root.guidance
+        }
+      },
+      agent_routing: {
+        default_skills: {
+          value: [],
+          confidence: "low",
+          inferred_from: scan.root.guidance
+        },
+        task_routes: {
+          value: [],
+          confidence: "low",
+          inferred_from: scan.root.guidance
+        },
+        rules: {
+          value: [],
+          confidence: "low",
+          inferred_from: scan.root.guidance
         }
       },
       workflows: [],
