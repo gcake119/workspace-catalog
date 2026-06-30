@@ -25,7 +25,7 @@ In this kind of workspace, an agent needs to understand UI ownership, backend co
 - **Hook**：在 agent 開工前提醒要讀 catalog、檢查 drift、補齊缺少的決策文件。
   **Hook**: reminds agents to read the catalog, check drift, and add missing decision docs before work starts.
 - **CLI**：提供 `scan`、`status`、`drift`、`preflight`。
-  **CLI**: provides `scan`, `status`, `drift`, and `preflight`.
+  **CLI**: provides `scan`, `status`, `drift`, `preflight`, and `confirm`.
 
 它不取代 Git、Spectra、ADR 或 codebase-memory。它只是 agent 協作前的 workspace 導航層。
 
@@ -44,6 +44,16 @@ Scanner 和 collector 不會覆蓋 confirmed catalog。
 
 Scanners and collectors never overwrite confirmed catalog semantics.
 
+## 架構記憶更新／Architecture Memory Updates
+
+當 skill 透過 `scan` 或 `drift` 發現 workspace 實作、文件、repo 角色、工作流或 skill routing 可能已改變時，它會先產生 draft 或 drift report，並請使用者用白話確認是否要更新架構記憶。
+
+When the skill detects possible changes in implementation, docs, repo roles, workflows, or skill routing through `scan` or `drift`, it first creates a draft or drift report and asks the user to confirm whether the architecture memory should be updated.
+
+使用者確認前，這些發現只算候選變更，不會寫進 `workspace.catalog.yaml`。
+
+Before user confirmation, these findings are only proposed changes and are not written to `workspace.catalog.yaml`.
+
 ## 基本流程／Workflow
 
 ```text
@@ -51,10 +61,14 @@ preflight
   -> scan workspace
   -> write draft catalog
   -> ask user to confirm uncertain semantics
-  -> write confirmed catalog
+  -> confirm and write confirmed catalog
   -> collect status
   -> report drift
 ```
+
+`scan` 和 `drift` 只提出候選變更。使用者確認後，agent 要先把 draft 改成 confirmed catalog 形狀，再執行 `confirm` 寫入長期記憶。
+
+`scan` and `drift` only propose changes. After user confirmation, the agent must rewrite the draft into confirmed catalog shape before running `confirm` to write durable memory.
 
 ## 指令／Commands
 
@@ -71,6 +85,7 @@ node cli/src/index.js preflight /path/to/workspace
 node cli/src/index.js scan /path/to/workspace
 node cli/src/index.js status /path/to/workspace
 node cli/src/index.js drift /path/to/workspace
+node cli/src/index.js confirm /path/to/workspace --yes
 ```
 
 Outputs:
@@ -78,7 +93,12 @@ Outputs:
 - `scan` writes `workspace.catalog.draft.yaml`
 - `status` writes `.workspace-catalog/status.json`
 - `drift` writes `.workspace-catalog/drift-report.md`
+- `confirm --yes` writes `workspace.catalog.yaml` from a reviewed draft
 - `preflight` prints reminders only
+
+`confirm` 會拒絕仍含 `confidence` 和 `inferred_from` 的未確認推論。
+
+`confirm` rejects drafts that still contain unconfirmed `confidence` and `inferred_from` wrappers.
 
 ## Hook
 

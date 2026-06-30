@@ -21,6 +21,24 @@ The workflow is:
 6. Collect live status separately.
 7. Report drift instead of silently rewriting confirmed semantics.
 
+## Memory Update Workflow
+
+Workspace Catalog is a confirmed memory layer, not an automatic memory writer.
+
+When workspace evidence changes:
+
+1. Run `workspace-catalog scan` or `workspace-catalog drift`.
+2. Review `workspace.catalog.draft.yaml` or `.workspace-catalog/drift-report.md`.
+3. Ask the user plain-language confirmation questions.
+4. After the user confirms, rewrite the draft into confirmed catalog shape:
+   - remove `confidence`
+   - remove `inferred_from`
+   - remove unresolved guesses
+   - keep only confirmed semantics
+5. Run `workspace-catalog confirm <workspace> --yes`.
+
+Never run `confirm` before the user has explicitly approved the catalog semantics.
+
 ## Evidence To Read
 
 Read these sources when present:
@@ -78,6 +96,7 @@ Examples:
 ## Forbidden Behavior
 
 - Do not auto-confirm low-confidence inferences.
+- Do not run `workspace-catalog confirm --yes` until the user has approved the draft semantics.
 - Do not let Git status override confirmed tool roles.
 - Do not let generic skill defaults override repo-local skill routing.
 - Do not replace Spectra, ADR, Git, or codebase-memory.
