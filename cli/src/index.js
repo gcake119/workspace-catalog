@@ -2,6 +2,7 @@
 import { writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { stringify } from "yaml";
+import { confirmCatalog } from "./confirm.js";
 import { detectCatalogDrift, writeDriftReport } from "./drift.js";
 import { createPreflightReport, formatPreflightReport, parsePreflightArgs } from "./preflight.js";
 import { evidenceSummary, scanWorkspace } from "./scanner.js";
@@ -124,7 +125,20 @@ async function main() {
     return;
   }
 
-  console.error("Usage: workspace-catalog <scan|status|drift|preflight> [workspace]");
+  if (command === "confirm") {
+    const result = await confirmCatalog(workspace, {
+      yes: process.argv.slice(4).includes("--yes")
+    });
+    if (!result.ok) {
+      console.error(result.errors.join("\n"));
+      process.exitCode = 1;
+      return;
+    }
+    console.log(`Wrote ${result.output}`);
+    return;
+  }
+
+  console.error("Usage: workspace-catalog <scan|status|drift|preflight|confirm> [workspace]");
   process.exitCode = 1;
 }
 

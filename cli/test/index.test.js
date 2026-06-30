@@ -79,3 +79,90 @@ test("scan writes a draft with inferred orientation and agent routing shape", as
     reason: "codebase_memory_unavailable"
   });
 });
+
+test("confirm refuses to write catalog without explicit user confirmation", async () => {
+  const workspace = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  await mkdir(workspace, { recursive: true });
+  await writeFile(join(workspace, "workspace.catalog.draft.yaml"), [
+    "schema_version: 1",
+    "workspace:",
+    "  id: demo",
+    "  name: Demo",
+    "  purpose: Confirmed purpose",
+    "workflows: []",
+    "tools: []",
+    ""
+  ].join("\n"));
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, "confirm", workspace]),
+    /confirm requires --yes/
+  );
+});
+
+test("confirm refuses drafts that still contain inference wrappers", async () => {
+  const workspace = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  await mkdir(workspace, { recursive: true });
+  await writeFile(join(workspace, "workspace.catalog.draft.yaml"), [
+    "schema_version: 1",
+    "workspace:",
+    "  id:",
+    "    value: demo",
+    "    confidence: low",
+    "    inferred_from: []",
+    "  name: Demo",
+    "  purpose: Confirmed purpose",
+    "workflows: []",
+    "tools: []",
+    ""
+  ].join("\n"));
+
+  await assert.rejects(
+    execFileAsync(process.execPath, [cliPath, "confirm", workspace, "--yes"]),
+    /unconfirmed inference remains at workspace\.id/
+  );
+});
+
+test("confirm writes a confirmed catalog from a reviewed draft", async () => {
+  const workspace = join(await mkdtemp(join(tmpdir(), "workspace-catalog-")), "workspace");
+  await mkdir(workspace, { recursive: true });
+  await writeFile(join(workspace, "workspace.catalog.draft.yaml"), [
+    "schema_version: 1",
+    "workspace:",
+    "  id: demo",
+    "  name: Demo",
+    "  purpose: Confirmed purpose",
+    "  orientation: Confirmed orientation",
+    "agent_routing:",
+    "  default_skills: []",
+    "  task_routes: []",
+    "  rules: []",
+    "workflows: []",
+    "tools: []",
+    "questions:",
+    "  - Already answered",
+    "evidence:",
+    "  root: []",
+    ""
+  ].join("\n"));
+
+  await execFileAsync(process.execPath, [cliPath, "confirm", workspace, "--yes"]);
+
+  const catalog = parse(await readFile(join(workspace, "workspace.catalog.yaml"), "utf8"));
+  assert.deepEqual(catalog, {
+    schema_version: 1,
+    workspace: {
+      id: "demo",
+      name: "Demo",
+      purpose: "Confirmed purpose",
+      orientation: "Confirmed orientation"
+    },
+    agent_routing: {
+      default_skills: [],
+      task_routes: [],
+      rules: []
+    },
+    workflows: [],
+    tools: []
+  });
+});
