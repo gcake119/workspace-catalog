@@ -1,43 +1,31 @@
 # Workspace Catalog Preflight Hook
 
-This hook reminds Codex to read or refresh a workspace catalog before it infers split repo roles, workflow boundaries, or active project direction.
+The Rust binary supports hook usage through symlinks.
 
-## Executable
-
-Use the executable wrapper:
+## Commands
 
 ```bash
-node hooks/workspace-catalog-preflight.js /path/to/workspace
-node hooks/workspace-catalog-preflight.js /path/to/workspace --changed AGENTS.md
-node hooks/workspace-catalog-preflight.js /path/to/workspace --event spectra-archive
+workspace-catalog-preflight /path/to/workspace
+workspace-catalog-preflight /path/to/workspace --changed AGENTS.md
+workspace-catalog-preflight /path/to/workspace --event spectra-archive
+workspace-catalog-session-preflight /path/inside/initialized/workspace
 ```
 
-Equivalent CLI command:
+## Strict Session Mode
 
-```bash
-node cli/src/index.js preflight /path/to/workspace
-```
+`workspace-catalog-session-preflight` walks upward from the current path.
 
-## Trigger Moments
+- If it finds `.workspace-catalog/catalog.yaml`, it prints preflight reminders.
+- If it does not find `.workspace-catalog/catalog.yaml`, it exits quietly.
 
-- A session starts in a directory that contains `workspace.catalog.yaml`.
-- A session starts in a split repo workspace that does not contain `workspace.catalog.yaml`.
-- Files matching `AGENTS.md`, `README.md`, `docs/decisions/**`, `openspec/changes/**`, or `openspec/specs/**` changed.
-- A Spectra archive has just completed.
-- The user asks for cross-repo, workflow, architecture, or project-status work.
+This keeps global hooks quiet outside initialized workspaces.
 
 ## Reminder Behavior
 
-When `workspace.catalog.yaml` exists, remind the agent:
+When local catalog memory exists, remind the agent:
 
 ```text
-Read workspace.catalog.yaml before inferring tool roles, workflow boundaries, or active project direction.
-```
-
-When catalog is missing, suggest:
-
-```text
-Use the workspace-catalog skill to scan this workspace and produce a draft catalog for user confirmation.
+Read .workspace-catalog/catalog.yaml before inferring tool roles, workflow boundaries, or active project direction.
 ```
 
 When potential drift is detected, report:
@@ -51,3 +39,4 @@ Catalog drift may exist because workspace guidance, ADRs, README, or Spectra art
 - The hook does not edit files.
 - The hook does not confirm inferred semantics.
 - The hook does not replace the workspace-catalog skill.
+- The hook does not modify global Codex hook settings.

@@ -116,7 +116,7 @@ tools:
     disabled_skills: []
 
 agent_preflight:
-  - Read workspace.catalog.yaml before inferring project direction.
+  - Read .workspace-catalog/catalog.yaml before inferring project direction.
   - Read tool AGENTS.md and primary docs before code changes.
   - Use Spectra for active requirements and archive context.
   - Use codebase-memory for structural code discovery.

@@ -1,6 +1,6 @@
 # Security Policy
 
-Workspace Catalog is a local-first developer tool. It scans workspace files and writes local catalog outputs.
+Workspace Catalog is a local-first developer tool. It scans workspace files and writes local agent memory outputs.
 
 ## Reporting
 
@@ -12,8 +12,8 @@ Do not disclose vulnerabilities publicly before there is a fix or mitigation.
 
 Do not include secrets, tokens, private keys, production credentials, or personal data in:
 
-- `workspace.catalog.yaml`
-- `workspace.catalog.draft.yaml`
+- `.workspace-catalog/catalog.yaml`
+- `.workspace-catalog/catalog.draft.yaml`
 - `.workspace-catalog/status.json`
 - `.workspace-catalog/drift-report.md`
 

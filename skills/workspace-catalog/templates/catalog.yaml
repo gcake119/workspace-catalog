@@ -17,7 +17,7 @@ workflows: []
 tools: []
 
 agent_preflight:
-  - Read workspace.catalog.yaml.
+  - Read .workspace-catalog/catalog.yaml.
   - Read relevant AGENTS.md files.
   - Read active Spectra changes and related ADRs.
   - Use codebase-memory for code discovery before grep.

@@ -10,7 +10,7 @@ Workspace Catalog is not a replacement for Spectra, ADRs, Git, or codebase-memor
 - ADR files remain the durable decision record.
 - Git remains the source control and history layer.
 - codebase-memory remains the code structure lookup layer.
-- `workspace.catalog.yaml` is only the confirmed workspace orientation and contract catalog.
+- `.workspace-catalog/catalog.yaml` is local confirmed workspace orientation and contract memory.
 
 ## Implementation Rules
 
@@ -28,4 +28,3 @@ Use `pnpm` for JavaScript or TypeScript work unless a later repo decision change
 ## Verification
 
 Run the smallest relevant test for each change. For CLI behavior, prefer deterministic fixture-based tests over live workspace assumptions.
-
