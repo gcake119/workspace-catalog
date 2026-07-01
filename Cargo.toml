@@ -1,0 +1,12 @@
+[package]
+name = "workspace-catalog"
+version = "0.2.0"
+edition = "2024"
+license = "MIT"
+description = "Local-first workspace memory tooling for split repo and agent collaboration."
+repository = "https://github.com/gcake119/workspace-catalog"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
