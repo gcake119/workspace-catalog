@@ -67,16 +67,17 @@ Initialize or refresh a workspace:
 workspace-catalog scan /path/to/workspace
 ```
 
-Review the plain-language checklist:
-
-```text
-/path/to/workspace/.workspace-catalog/review.md
-```
-
-You can regenerate and print it with:
+Ask one review question at a time:
 
 ```bash
-workspace-catalog review /path/to/workspace
+workspace-catalog next-question /path/to/workspace
+```
+
+Record the user's answer, then ask the next question:
+
+```bash
+workspace-catalog answer-question /path/to/workspace tools.frontend.role --answer "frontend owns the user-facing UI."
+workspace-catalog next-question /path/to/workspace
 ```
 
 After the user confirms the meaning, write local memory:
@@ -105,13 +106,14 @@ Uninstall only removes symlinks installed from this repo. It does not delete `.w
 
 ## 記憶如何更新／How Memory Updates
 
-`scan` 會重新讀 workspace 文件和子 repo，產生候選記憶：
+`scan` 會重新讀 workspace 文件和子 repo，產生候選記憶與逐題確認佇列：
 
-`scan` rereads workspace docs and child repos, then writes candidate memory and a review checklist:
+`scan` rereads workspace docs and child repos, then writes candidate memory and a one-question-at-a-time review queue:
 
 ```text
 .workspace-catalog/catalog.draft.yaml
 .workspace-catalog/review.md
+.workspace-catalog/review-questions.json
 ```
 
 `drift` 會比對目前 workspace 和已確認記憶：

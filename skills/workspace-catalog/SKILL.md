@@ -17,8 +17,8 @@ The workflow is:
 2. Scan workspace evidence.
 3. Generate `.workspace-catalog/catalog.draft.yaml`.
 4. Mark every inferred role, workflow, and contract with `confidence` and `inferred_from`.
-5. Generate or read `.workspace-catalog/review.md`.
-6. Ask the user to verify the review checklist, not the YAML.
+5. Generate `.workspace-catalog/review-questions.json`.
+6. Use `workspace-catalog next-question <workspace>` and ask the user one question at a time.
 7. After confirmation, rewrite the draft into confirmed catalog shape.
 8. Run `workspace-catalog confirm <workspace> --yes`.
 
@@ -27,14 +27,12 @@ The workflow is:
 When workspace evidence changes:
 
 1. Run `workspace-catalog scan` or `workspace-catalog drift`.
-2. Run `workspace-catalog review <workspace>` when a draft exists.
-3. Show the user only the short review checklist:
-   - workspace direction
-   - child repos and roles
-   - agent/skill usage
-   - questions that need correction
-4. Ask whether the checklist is correct or which item needs correction.
-5. Confirm only after the user approves.
+2. Run `workspace-catalog next-question <workspace>` when a draft exists.
+3. Ask only the printed question.
+4. After the user answers, record it with `workspace-catalog answer-question <workspace> <question-id> --answer "<answer>"`.
+5. Update `.workspace-catalog/catalog.draft.yaml` when the answer changes a role, boundary, workflow, or skill rule.
+6. Repeat `next-question` until there are no pending questions.
+7. Confirm only after the user approves the final catalog meaning.
 
 Never run `confirm` before the user has explicitly approved the catalog semantics.
 
@@ -59,6 +57,7 @@ Read these sources when present:
 
 - `.workspace-catalog/catalog.draft.yaml`: inferred candidate memory awaiting user confirmation.
 - `.workspace-catalog/review.md`: plain-language checklist for user verification.
+- `.workspace-catalog/review-questions.json`: one-question-at-a-time confirmation queue.
 - `.workspace-catalog/catalog.yaml`: confirmed local architecture memory.
 - `.workspace-catalog/status.json`: live status snapshot.
 - `.workspace-catalog/drift-report.md`: drift findings.

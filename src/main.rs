@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 use serde_yaml::{Mapping, Value};
 use std::collections::{BTreeMap, BTreeSet};
@@ -14,6 +14,7 @@ const CATALOG_DIR: &str = ".workspace-catalog";
 const CATALOG_FILE: &str = "catalog.yaml";
 const DRAFT_FILE: &str = "catalog.draft.yaml";
 const REVIEW_FILE: &str = "review.md";
+const REVIEW_QUESTIONS_FILE: &str = "review-questions.json";
 const STATUS_FILE: &str = "status.json";
 const DRIFT_FILE: &str = "drift-report.md";
 
@@ -176,6 +177,24 @@ struct VerificationCommand {
     command: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ReviewQuestionQueue {
+    current_index: usize,
+    questions: Vec<ReviewQuestion>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ReviewQuestion {
+    id: String,
+    kind: String,
+    question: String,
+    current_value: String,
+    suggested_action: String,
+    status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    answer: Option<String>,
+}
+
 fn main() {
     if let Err(error) = run() {
         eprintln!("{error}");
@@ -218,13 +237,15 @@ fn run() -> Result<(), String> {
     match command {
         "scan" => run_scan(&workspace),
         "review" => run_review(&workspace),
+        "next-question" => run_next_question(&workspace),
+        "answer-question" => run_answer_question(&workspace, &args[3..]),
         "preflight" => run_preflight(&workspace, &args[3..]),
         "drift" => run_drift(&workspace),
         "status" => run_status(&workspace),
         "confirm" => run_confirm(&workspace, &args[3..]),
         _ => {
             eprintln!(
-                "Usage: workspace-catalog <scan|review|status|drift|preflight|confirm> [workspace]"
+                "Usage: workspace-catalog <scan|review|next-question|answer-question|status|drift|preflight|confirm> [workspace]"
             );
             Err("unknown command".to_string())
         }
@@ -240,8 +261,10 @@ fn run_scan(workspace: &Path) -> Result<(), String> {
     println!("Wrote {}", output.display());
     let review_output = write_review_report(workspace, &draft).map_err(to_string)?;
     println!("Wrote {}", review_output.display());
+    let questions_output = write_review_questions(workspace, &draft).map_err(to_string)?;
+    println!("Wrote {}", questions_output.display());
     println!(
-        "Next: read the review checklist, then ask the user whether the workspace memory is correct."
+        "Next: run workspace-catalog next-question, then ask the user one question at a time."
     );
     Ok(())
 }
@@ -250,7 +273,39 @@ fn run_review(workspace: &Path) -> Result<(), String> {
     let draft = read_yaml(&draft_path(workspace))?;
     let output = write_review_report(workspace, &draft).map_err(to_string)?;
     println!("Wrote {}", output.display());
+    let questions_output = write_review_questions(workspace, &draft).map_err(to_string)?;
+    println!("Wrote {}", questions_output.display());
     println!("{}", format_review_report(&draft));
+    Ok(())
+}
+
+fn run_next_question(workspace: &Path) -> Result<(), String> {
+    let queue = load_or_create_review_questions(workspace)?;
+    println!("{}", format_next_question(&queue));
+    Ok(())
+}
+
+fn run_answer_question(workspace: &Path, args: &[String]) -> Result<(), String> {
+    let question_id = args
+        .first()
+        .ok_or("answer-question requires a question id")?
+        .to_string();
+    let answer = parse_answer_arg(args)?;
+    let mut queue = load_or_create_review_questions(workspace)?;
+    let question = queue
+        .questions
+        .iter_mut()
+        .find(|question| question.id == question_id)
+        .ok_or_else(|| format!("question not found: {question_id}"))?;
+    question.status = "answered".to_string();
+    question.answer = Some(answer);
+    queue.current_index = queue
+        .questions
+        .iter()
+        .position(|question| question.status != "answered")
+        .unwrap_or(queue.questions.len());
+    write_review_question_queue(workspace, &queue).map_err(to_string)?;
+    println!("{}", format_next_question(&queue));
     Ok(())
 }
 
@@ -537,6 +592,126 @@ fn write_review_report(root: &Path, draft: &Value) -> io::Result<PathBuf> {
     let output = catalog_dir(root).join(REVIEW_FILE);
     fs::write(&output, format!("{}\n", format_review_report(draft)))?;
     Ok(output)
+}
+
+fn write_review_questions(root: &Path, draft: &Value) -> io::Result<PathBuf> {
+    fs::create_dir_all(catalog_dir(root))?;
+    let queue = build_review_question_queue(draft);
+    write_review_question_queue(root, &queue)
+}
+
+fn write_review_question_queue(root: &Path, queue: &ReviewQuestionQueue) -> io::Result<PathBuf> {
+    fs::create_dir_all(catalog_dir(root))?;
+    let output = catalog_dir(root).join(REVIEW_QUESTIONS_FILE);
+    let content = serde_json::to_string_pretty(queue).map_err(io::Error::other)?;
+    fs::write(&output, format!("{content}\n"))?;
+    Ok(output)
+}
+
+fn load_or_create_review_questions(root: &Path) -> Result<ReviewQuestionQueue, String> {
+    let path = review_questions_path(root);
+    if path.exists() {
+        let content = fs::read_to_string(&path).map_err(to_string)?;
+        return serde_json::from_str(&content).map_err(to_string);
+    }
+    let draft = read_yaml(&draft_path(root))?;
+    let queue = build_review_question_queue(&draft);
+    write_review_question_queue(root, &queue).map_err(to_string)?;
+    Ok(queue)
+}
+
+fn build_review_question_queue(draft: &Value) -> ReviewQuestionQueue {
+    let empty = Value::Null;
+    let workspace = draft.get("workspace").unwrap_or(&empty);
+    let mut questions = Vec::new();
+    questions.push(ReviewQuestion {
+        id: "workspace.purpose".to_string(),
+        kind: "workspace".to_string(),
+        question: "這個 workspace 的主要用途是什麼？".to_string(),
+        current_value: plain_field(workspace, "purpose"),
+        suggested_action: "請用一句話確認或修正。".to_string(),
+        status: "pending".to_string(),
+        answer: None,
+    });
+    questions.push(ReviewQuestion {
+        id: "workspace.orientation".to_string(),
+        kind: "workspace".to_string(),
+        question: "agent 進入這個 workspace 時，最需要先理解的方向或邊界是什麼？".to_string(),
+        current_value: plain_field(workspace, "orientation"),
+        suggested_action:
+            "例如：這是 coordination layer、產品 repo、文件工具，或只負責某段工作流。".to_string(),
+        status: "pending".to_string(),
+        answer: None,
+    });
+
+    for tool in draft
+        .get("tools")
+        .and_then(Value::as_sequence)
+        .into_iter()
+        .flatten()
+    {
+        let id = plain_field(tool, "id");
+        let path = plain_field(tool, "path");
+        questions.push(ReviewQuestion {
+            id: format!("tools.{id}.role"),
+            kind: "tool_role".to_string(),
+            question: format!("{id} 在這個 workspace 負責什麼？"),
+            current_value: format!("路徑：{path}；目前角色：{}", plain_field(tool, "role")),
+            suggested_action:
+                "例如：frontend、backend、workflow bot、knowledge engine、supporting tool。"
+                    .to_string(),
+            status: "pending".to_string(),
+            answer: None,
+        });
+        questions.push(ReviewQuestion {
+            id: format!("tools.{id}.skills"),
+            kind: "skill_routing".to_string(),
+            question: format!("agent 處理 {id} 時，適合或不適合使用哪些 skills？"),
+            current_value: plain_field(tool, "recommended_skills"),
+            suggested_action: "可以回答適合的 skill、必須先讀的 skill，或沒有特別規則。"
+                .to_string(),
+            status: "pending".to_string(),
+            answer: None,
+        });
+    }
+
+    ReviewQuestionQueue {
+        current_index: 0,
+        questions,
+    }
+}
+
+fn format_next_question(queue: &ReviewQuestionQueue) -> String {
+    let Some((index, question)) = queue
+        .questions
+        .iter()
+        .enumerate()
+        .find(|(_, question)| question.status != "answered")
+    else {
+        return "所有 review 問題都已回答。請整理 catalog.draft.yaml，確認後再執行 workspace-catalog confirm <workspace> --yes。".to_string();
+    };
+    format!(
+        "問題 {}/{} [{}]\n{}\n目前判斷：{}\n回覆方式：{}\n記錄回答：workspace-catalog answer-question <workspace> {} --answer \"你的回答\"",
+        index + 1,
+        queue.questions.len(),
+        question.id,
+        question.question,
+        question.current_value,
+        question.suggested_action,
+        question.id
+    )
+}
+
+fn parse_answer_arg(args: &[String]) -> Result<String, String> {
+    let answer = args
+        .windows(2)
+        .find_map(|window| (window[0] == "--answer").then(|| window[1].clone()))
+        .ok_or("answer-question requires --answer <text>")?;
+    if answer.trim().is_empty() {
+        Err("answer cannot be empty".to_string())
+    } else {
+        Ok(answer)
+    }
 }
 
 fn format_review_report(draft: &Value) -> String {
@@ -1339,6 +1514,10 @@ fn draft_path(root: &Path) -> PathBuf {
     catalog_dir(root).join(DRAFT_FILE)
 }
 
+fn review_questions_path(root: &Path) -> PathBuf {
+    catalog_dir(root).join(REVIEW_QUESTIONS_FILE)
+}
+
 fn relative_confirmed_catalog_path() -> String {
     format!("{CATALOG_DIR}/{CATALOG_FILE}")
 }
@@ -1511,7 +1690,58 @@ tools: []
 
     #[test]
     fn review_report_turns_draft_into_user_checklist() {
-        let draft = serde_yaml::from_str::<Value>(
+        let draft = sample_review_draft();
+
+        let report = format_review_report(&draft);
+        assert!(report.contains("請先確認這 4 件事"));
+        assert!(report.contains("- 名稱：Demo Workspace"));
+        assert!(report.contains("- tool-a：./tool-a，角色：frontend"));
+        assert!(report.contains("- tool-a 適用 skills：playwright"));
+        assert!(report.contains("請確認 tool-a 在這個 workspace 的角色。"));
+        assert!(report.contains("正確，可以更新記憶"));
+    }
+
+    #[test]
+    fn review_questions_support_one_question_at_a_time() {
+        let draft = sample_review_draft();
+        let queue = build_review_question_queue(&draft);
+        assert_eq!(queue.current_index, 0);
+        assert_eq!(queue.questions[0].id, "workspace.purpose");
+        assert_eq!(queue.questions[2].id, "tools.tool-a.role");
+
+        let next = format_next_question(&queue);
+        assert!(next.contains("問題 1/4 [workspace.purpose]"));
+        assert!(next.contains("這個 workspace 的主要用途是什麼？"));
+    }
+
+    #[test]
+    fn answer_question_records_answer_and_advances_queue() {
+        let root = temp_workspace("answer-question");
+        let draft = sample_review_draft();
+        write_review_question_queue(&root, &build_review_question_queue(&draft)).unwrap();
+
+        run_answer_question(
+            &root,
+            &[
+                "workspace.purpose".to_string(),
+                "--answer".to_string(),
+                "Coordinate split repos.".to_string(),
+            ],
+        )
+        .unwrap();
+
+        let queue = load_or_create_review_questions(&root).unwrap();
+        assert_eq!(queue.current_index, 1);
+        assert_eq!(queue.questions[0].status, "answered");
+        assert_eq!(
+            queue.questions[0].answer,
+            Some("Coordinate split repos.".to_string())
+        );
+        assert!(format_next_question(&queue).contains("[workspace.orientation]"));
+    }
+
+    fn sample_review_draft() -> Value {
+        serde_yaml::from_str::<Value>(
             r#"
 schema_version: 1
 workspace:
@@ -1555,14 +1785,6 @@ questions:
   - What role does tool-a play in this workspace?
 "#,
         )
-        .unwrap();
-
-        let report = format_review_report(&draft);
-        assert!(report.contains("請先確認這 4 件事"));
-        assert!(report.contains("- 名稱：Demo Workspace"));
-        assert!(report.contains("- tool-a：./tool-a，角色：frontend"));
-        assert!(report.contains("- tool-a 適用 skills：playwright"));
-        assert!(report.contains("請確認 tool-a 在這個 workspace 的角色。"));
-        assert!(report.contains("正確，可以更新記憶"));
+        .unwrap()
     }
 }
