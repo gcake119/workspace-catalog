@@ -17,8 +17,8 @@ The workflow is:
 2. Scan workspace evidence.
 3. Generate `.workspace-catalog/catalog.draft.yaml`.
 4. Mark every inferred role, workflow, and contract with `confidence` and `inferred_from`.
-5. Explain changes in plain language.
-6. Ask the user to confirm whether to update architecture memory.
+5. Generate or read `.workspace-catalog/review.md`.
+6. Ask the user to verify the review checklist, not the YAML.
 7. After confirmation, rewrite the draft into confirmed catalog shape.
 8. Run `workspace-catalog confirm <workspace> --yes`.
 
@@ -27,9 +27,13 @@ The workflow is:
 When workspace evidence changes:
 
 1. Run `workspace-catalog scan` or `workspace-catalog drift`.
-2. Review `.workspace-catalog/catalog.draft.yaml` or `.workspace-catalog/drift-report.md`.
-3. Tell the user what changed: workflow, child repo relationship, boundary, or skill routing.
-4. Ask whether to update local architecture memory.
+2. Run `workspace-catalog review <workspace>` when a draft exists.
+3. Show the user only the short review checklist:
+   - workspace direction
+   - child repos and roles
+   - agent/skill usage
+   - questions that need correction
+4. Ask whether the checklist is correct or which item needs correction.
 5. Confirm only after the user approves.
 
 Never run `confirm` before the user has explicitly approved the catalog semantics.
@@ -54,6 +58,7 @@ Read these sources when present:
 ## Output Files
 
 - `.workspace-catalog/catalog.draft.yaml`: inferred candidate memory awaiting user confirmation.
+- `.workspace-catalog/review.md`: plain-language checklist for user verification.
 - `.workspace-catalog/catalog.yaml`: confirmed local architecture memory.
 - `.workspace-catalog/status.json`: live status snapshot.
 - `.workspace-catalog/drift-report.md`: drift findings.

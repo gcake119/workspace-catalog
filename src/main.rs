@@ -13,6 +13,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const CATALOG_DIR: &str = ".workspace-catalog";
 const CATALOG_FILE: &str = "catalog.yaml";
 const DRAFT_FILE: &str = "catalog.draft.yaml";
+const REVIEW_FILE: &str = "review.md";
 const STATUS_FILE: &str = "status.json";
 const DRIFT_FILE: &str = "drift-report.md";
 
@@ -216,12 +217,15 @@ fn run() -> Result<(), String> {
         .unwrap_or(env::current_dir().map_err(to_string)?);
     match command {
         "scan" => run_scan(&workspace),
+        "review" => run_review(&workspace),
         "preflight" => run_preflight(&workspace, &args[3..]),
         "drift" => run_drift(&workspace),
         "status" => run_status(&workspace),
         "confirm" => run_confirm(&workspace, &args[3..]),
         _ => {
-            eprintln!("Usage: workspace-catalog <scan|status|drift|preflight|confirm> [workspace]");
+            eprintln!(
+                "Usage: workspace-catalog <scan|review|status|drift|preflight|confirm> [workspace]"
+            );
             Err("unknown command".to_string())
         }
     }
@@ -234,6 +238,19 @@ fn run_scan(workspace: &Path) -> Result<(), String> {
     let output = draft_path(workspace);
     fs::write(&output, serde_yaml::to_string(&draft).map_err(to_string)?).map_err(to_string)?;
     println!("Wrote {}", output.display());
+    let review_output = write_review_report(workspace, &draft).map_err(to_string)?;
+    println!("Wrote {}", review_output.display());
+    println!(
+        "Next: read the review checklist, then ask the user whether the workspace memory is correct."
+    );
+    Ok(())
+}
+
+fn run_review(workspace: &Path) -> Result<(), String> {
+    let draft = read_yaml(&draft_path(workspace))?;
+    let output = write_review_report(workspace, &draft).map_err(to_string)?;
+    println!("Wrote {}", output.display());
+    println!("{}", format_review_report(&draft));
     Ok(())
 }
 
@@ -513,6 +530,104 @@ fn build_draft(workspace: &Path, scan: &ScanResult) -> Value {
         serde_yaml::to_value(evidence_summary(scan)).unwrap_or(Value::Null),
     );
     Value::Mapping(root)
+}
+
+fn write_review_report(root: &Path, draft: &Value) -> io::Result<PathBuf> {
+    fs::create_dir_all(catalog_dir(root))?;
+    let output = catalog_dir(root).join(REVIEW_FILE);
+    fs::write(&output, format!("{}\n", format_review_report(draft)))?;
+    Ok(output)
+}
+
+fn format_review_report(draft: &Value) -> String {
+    let empty = Value::Null;
+    let workspace = draft.get("workspace").unwrap_or(&empty);
+    let workspace_name = plain_field(workspace, "name");
+    let workspace_purpose = plain_field(workspace, "purpose");
+    let workspace_orientation = plain_field(workspace, "orientation");
+
+    let mut lines = vec![
+        "# Workspace Catalog Review".to_string(),
+        "".to_string(),
+        "請先確認這 4 件事，不需要直接讀 YAML。".to_string(),
+        "".to_string(),
+        "## 1. Workspace 方向".to_string(),
+        "".to_string(),
+        format!("- 名稱：{workspace_name}"),
+        format!("- 目的：{workspace_purpose}"),
+        format!("- 方向：{workspace_orientation}"),
+        "".to_string(),
+        "## 2. 子 repo 與角色".to_string(),
+        "".to_string(),
+    ];
+
+    let tools = draft
+        .get("tools")
+        .and_then(Value::as_sequence)
+        .cloned()
+        .unwrap_or_default();
+    if tools.is_empty() {
+        lines.push("- 尚未掃描到子 repo。".to_string());
+    } else {
+        lines.extend(tools.iter().map(|tool| {
+            let id = plain_field(tool, "id");
+            let path = plain_field(tool, "path");
+            let role = plain_field(tool, "role");
+            format!("- {id}：{path}，角色：{role}")
+        }));
+    }
+
+    lines.extend([
+        "".to_string(),
+        "## 3. Agent／Skill 使用方式".to_string(),
+        "".to_string(),
+    ]);
+    let routing = draft.get("agent_routing").unwrap_or(&empty);
+    lines.push(format!(
+        "- Workspace 預設 skills：{}",
+        plain_field(routing, "default_skills")
+    ));
+    lines.push(format!(
+        "- Task routes：{}",
+        plain_field(routing, "task_routes")
+    ));
+    for tool in &tools {
+        let id = plain_field(tool, "id");
+        let skills = plain_field(tool, "recommended_skills");
+        lines.push(format!("- {id} 適用 skills：{skills}"));
+    }
+
+    lines.extend([
+        "".to_string(),
+        "## 4. 需要使用者確認或補充".to_string(),
+        "".to_string(),
+    ]);
+    let questions = draft
+        .get("questions")
+        .and_then(Value::as_sequence)
+        .cloned()
+        .unwrap_or_default();
+    if questions.is_empty() {
+        lines.push("- 目前沒有額外問題。".to_string());
+    } else {
+        lines.extend(
+            questions
+                .iter()
+                .filter_map(Value::as_str)
+                .map(|question| format!("- {}", plain_question(question))),
+        );
+    }
+
+    lines.extend([
+        "".to_string(),
+        "## 回覆方式".to_string(),
+        "".to_string(),
+        "- 如果正確，回覆：正確，可以更新記憶。".to_string(),
+        "- 如果有錯，回覆：需要修改，然後指出哪一項不對。".to_string(),
+        "".to_string(),
+        "確認前不會寫入 .workspace-catalog/catalog.yaml。".to_string(),
+    ]);
+    lines.join("\n")
 }
 
 fn create_preflight_report(root: &Path, args: &[String]) -> Result<PreflightReport, String> {
@@ -1263,6 +1378,63 @@ fn string_field(value: &Value, field: &str) -> Option<String> {
     value.get(field).and_then(Value::as_str).map(str::to_string)
 }
 
+fn plain_field(value: &Value, field: &str) -> String {
+    value
+        .get(field)
+        .map(plain_value)
+        .unwrap_or_else(|| "未判斷".to_string())
+}
+
+fn plain_value(value: &Value) -> String {
+    if let Some(map) = value.as_mapping() {
+        if let Some(inner) = map.get(s("value")) {
+            return plain_value(inner);
+        }
+    }
+    if let Some(value) = value.as_str() {
+        if value.trim().is_empty()
+            || value == "unknown"
+            || value == "Review workspace docs to confirm purpose."
+            || value == "Review workspace docs to confirm orientation."
+        {
+            return "需確認".to_string();
+        }
+        return value.to_string();
+    }
+    if let Some(sequence) = value.as_sequence() {
+        if sequence.is_empty() {
+            return "待確認".to_string();
+        }
+        return sequence
+            .iter()
+            .map(plain_value)
+            .collect::<Vec<_>>()
+            .join(", ");
+    }
+    if value.is_null() {
+        return "未判斷".to_string();
+    }
+    serde_yaml::to_string(value)
+        .map(|text| text.trim().to_string())
+        .unwrap_or_else(|_| "未判斷".to_string())
+}
+
+fn plain_question(question: &str) -> String {
+    if let Some(tool) = question
+        .strip_prefix("What role does ")
+        .and_then(|text| text.strip_suffix(" play in this workspace?"))
+    {
+        return format!("請確認 {tool} 在這個 workspace 的角色。");
+    }
+    if let Some(tool) = question
+        .strip_prefix("Which skills should agents use or avoid when working on ")
+        .and_then(|text| text.strip_suffix("?"))
+    {
+        return format!("請確認 agent 處理 {tool} 時適合或不適合使用哪些 skills。");
+    }
+    question.to_string()
+}
+
 fn now_iso() -> String {
     let seconds = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1335,5 +1507,62 @@ tools: []
         assert!(resolve_workspace_path(&root, "").is_err());
         assert!(resolve_workspace_path(&root, "../outside").is_err());
         assert!(resolve_workspace_path(&root, "/tmp/outside").is_err());
+    }
+
+    #[test]
+    fn review_report_turns_draft_into_user_checklist() {
+        let draft = serde_yaml::from_str::<Value>(
+            r#"
+schema_version: 1
+workspace:
+  id:
+    value: demo
+    confidence: medium
+    inferred_from: [AGENTS.md]
+  name:
+    value: Demo Workspace
+    confidence: medium
+    inferred_from: [AGENTS.md]
+  purpose:
+    value: Coordinate split repos.
+    confidence: low
+    inferred_from: [README.md]
+  orientation:
+    value: Review before changing repo roles.
+    confidence: low
+    inferred_from: [README.md]
+agent_routing:
+  default_skills:
+    value: [workspace-catalog]
+    confidence: low
+    inferred_from: [AGENTS.md]
+  task_routes:
+    value: []
+    confidence: low
+    inferred_from: []
+tools:
+  - id: tool-a
+    path: ./tool-a
+    role:
+      value: frontend
+      confidence: low
+      inferred_from: [tool-a/README.md]
+    recommended_skills:
+      value: [playwright]
+      confidence: low
+      inferred_from: [tool-a/README.md]
+questions:
+  - What role does tool-a play in this workspace?
+"#,
+        )
+        .unwrap();
+
+        let report = format_review_report(&draft);
+        assert!(report.contains("請先確認這 4 件事"));
+        assert!(report.contains("- 名稱：Demo Workspace"));
+        assert!(report.contains("- tool-a：./tool-a，角色：frontend"));
+        assert!(report.contains("- tool-a 適用 skills：playwright"));
+        assert!(report.contains("請確認 tool-a 在這個 workspace 的角色。"));
+        assert!(report.contains("正確，可以更新記憶"));
     }
 }
