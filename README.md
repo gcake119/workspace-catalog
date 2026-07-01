@@ -61,6 +61,19 @@ The installer builds the Rust CLI and installs:
 - `workspace-catalog-session-preflight`
 - Codex skill：`workspace-catalog`
 
+Enable the global strict session hook when you want Codex to remind agents only inside initialized workspaces:
+
+```bash
+workspace-catalog install-hook
+workspace-catalog hook-status
+```
+
+Or install and enable the hook in one step:
+
+```bash
+./scripts/install.sh --with-hook
+```
+
 Initialize or refresh a workspace:
 
 ```bash
@@ -92,6 +105,8 @@ Useful commands:
 workspace-catalog preflight /path/to/workspace
 workspace-catalog status /path/to/workspace
 workspace-catalog drift /path/to/workspace
+workspace-catalog hook-status
+workspace-catalog uninstall-hook
 ```
 
 Uninstall:

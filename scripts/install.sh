@@ -6,6 +6,20 @@ bin_dir="${WORKSPACE_CATALOG_BIN_DIR:-"$HOME/.local/bin"}"
 codex_home="${CODEX_HOME:-"$HOME/.codex"}"
 skill_dir="$codex_home/skills"
 binary="$repo_root/target/release/workspace-catalog"
+install_hook=false
+
+for arg in "$@"; do
+  case "$arg" in
+    --with-hook)
+      install_hook=true
+      ;;
+    *)
+      echo "Unknown option: $arg" >&2
+      echo "Usage: ./scripts/install.sh [--with-hook]" >&2
+      exit 1
+      ;;
+  esac
+done
 
 link_file() {
   local source="$1"
@@ -35,3 +49,10 @@ echo "  $bin_dir/workspace-catalog"
 echo "  $bin_dir/workspace-catalog-preflight"
 echo "  $bin_dir/workspace-catalog-session-preflight"
 echo "  $skill_dir/workspace-catalog"
+
+if [[ "$install_hook" == true ]]; then
+  "$bin_dir/workspace-catalog" install-hook
+else
+  echo "Global hook not enabled. To enable strict session hook:"
+  echo "  workspace-catalog install-hook"
+fi

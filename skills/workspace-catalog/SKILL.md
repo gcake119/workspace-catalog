@@ -62,6 +62,16 @@ Read these sources when present:
 - `.workspace-catalog/status.json`: live status snapshot.
 - `.workspace-catalog/drift-report.md`: drift findings.
 
+## Hook Management
+
+Use these commands when the user asks about automatic hook activation:
+
+- `workspace-catalog hook-status`: check whether the global strict session hook is installed.
+- `workspace-catalog install-hook`: add `workspace-catalog-session-preflight` to Codex `SessionStart` hooks.
+- `workspace-catalog uninstall-hook`: remove only Workspace Catalog hook entries.
+
+The strict session hook stays quiet outside workspaces that already have `.workspace-catalog/catalog.yaml`.
+
 ## Skill Routing To Capture
 
 Catalogs may include workspace-level routing and tool-level routing:

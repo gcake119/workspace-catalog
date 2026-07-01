@@ -9,6 +9,9 @@ workspace-catalog-preflight /path/to/workspace
 workspace-catalog-preflight /path/to/workspace --changed AGENTS.md
 workspace-catalog-preflight /path/to/workspace --event spectra-archive
 workspace-catalog-session-preflight /path/inside/initialized/workspace
+workspace-catalog install-hook
+workspace-catalog hook-status
+workspace-catalog uninstall-hook
 ```
 
 ## Strict Session Mode
@@ -39,4 +42,4 @@ Catalog drift may exist because workspace guidance, ADRs, README, or Spectra art
 - The hook does not edit files.
 - The hook does not confirm inferred semantics.
 - The hook does not replace the workspace-catalog skill.
-- The hook does not modify global Codex hook settings.
+- `workspace-catalog install-hook` modifies `~/.codex/hooks.json` only when the user explicitly runs it.

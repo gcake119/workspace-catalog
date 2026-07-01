@@ -17,6 +17,7 @@ const REVIEW_FILE: &str = "review.md";
 const REVIEW_QUESTIONS_FILE: &str = "review-questions.json";
 const STATUS_FILE: &str = "status.json";
 const DRIFT_FILE: &str = "drift-report.md";
+const SESSION_START_EVENTS: &[&str] = &["startup", "resume", "clear", "compact"];
 
 const ROOT_GUIDANCE_FILES: &[&str] = &["AGENTS.md", "README.md", ".cursorrules", "package.json"];
 const GUIDANCE_FILES: &[&str] = &[
@@ -243,9 +244,12 @@ fn run() -> Result<(), String> {
         "drift" => run_drift(&workspace),
         "status" => run_status(&workspace),
         "confirm" => run_confirm(&workspace, &args[3..]),
+        "install-hook" => run_install_hook(),
+        "uninstall-hook" => run_uninstall_hook(),
+        "hook-status" => run_hook_status(),
         _ => {
             eprintln!(
-                "Usage: workspace-catalog <scan|review|next-question|answer-question|status|drift|preflight|confirm> [workspace]"
+                "Usage: workspace-catalog <scan|review|next-question|answer-question|status|drift|preflight|confirm|install-hook|uninstall-hook|hook-status> [workspace]"
             );
             Err("unknown command".to_string())
         }
@@ -381,6 +385,63 @@ fn run_confirm(workspace: &Path, args: &[String]) -> Result<(), String> {
     )
     .map_err(to_string)?;
     println!("Wrote {}", output.display());
+    Ok(())
+}
+
+fn run_install_hook() -> Result<(), String> {
+    let path = hooks_config_path()?;
+    let mut config = read_hooks_config(&path)?;
+    let changed = install_session_hook(&mut config)?;
+    write_hooks_config(&path, &config)?;
+    if changed {
+        println!(
+            "Installed workspace-catalog session hook in {}",
+            path.display()
+        );
+    } else {
+        println!(
+            "workspace-catalog session hook is already installed in {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn run_uninstall_hook() -> Result<(), String> {
+    let path = hooks_config_path()?;
+    let mut config = read_hooks_config(&path)?;
+    let removed = uninstall_session_hook(&mut config);
+    write_hooks_config(&path, &config)?;
+    if removed == 0 {
+        println!(
+            "workspace-catalog session hook was not installed in {}",
+            path.display()
+        );
+    } else {
+        println!(
+            "Removed {removed} workspace-catalog session hook entries from {}",
+            path.display()
+        );
+    }
+    Ok(())
+}
+
+fn run_hook_status() -> Result<(), String> {
+    let path = hooks_config_path()?;
+    let config = read_hooks_config(&path)?;
+    let installed = installed_session_hook_events(&config);
+    if installed.is_empty() {
+        println!(
+            "workspace-catalog session hook is not installed in {}",
+            path.display()
+        );
+    } else {
+        println!(
+            "workspace-catalog session hook is installed for: {}",
+            installed.join(", ")
+        );
+        println!("{}", path.display());
+    }
     Ok(())
 }
 
@@ -1015,6 +1076,168 @@ fn write_drift_report(root: &Path, report: &DriftReport) -> io::Result<PathBuf> 
     }
     fs::write(&output, format!("{}\n", lines.join("\n")))?;
     Ok(output)
+}
+
+fn hooks_config_path() -> Result<PathBuf, String> {
+    let codex_home = env::var("CODEX_HOME")
+        .map(PathBuf::from)
+        .or_else(|_| env::var("HOME").map(|home| PathBuf::from(home).join(".codex")))
+        .map_err(to_string)?;
+    Ok(codex_home.join("hooks.json"))
+}
+
+fn read_hooks_config(path: &Path) -> Result<JsonValue, String> {
+    if !path.exists() {
+        return Ok(serde_json::json!({ "hooks": {} }));
+    }
+    let content = fs::read_to_string(path).map_err(to_string)?;
+    serde_json::from_str(&content).map_err(to_string)
+}
+
+fn write_hooks_config(path: &Path, config: &JsonValue) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(to_string)?;
+    }
+    fs::write(
+        path,
+        format!(
+            "{}\n",
+            serde_json::to_string_pretty(config).map_err(to_string)?
+        ),
+    )
+    .map_err(to_string)
+}
+
+fn install_session_hook(config: &mut JsonValue) -> Result<bool, String> {
+    let command = workspace_session_hook_command()?;
+    install_session_hook_with_command(config, &command)
+}
+
+fn install_session_hook_with_command(
+    config: &mut JsonValue,
+    command: &str,
+) -> Result<bool, String> {
+    let mut changed = false;
+    for matcher in SESSION_START_EVENTS {
+        changed |= ensure_session_hook(config, matcher, command)?;
+    }
+    Ok(changed)
+}
+
+fn ensure_session_hook(
+    config: &mut JsonValue,
+    matcher: &str,
+    command: &str,
+) -> Result<bool, String> {
+    let root = config
+        .as_object_mut()
+        .ok_or("hooks config must be a JSON object")?;
+    let hooks = root
+        .entry("hooks".to_string())
+        .or_insert_with(|| serde_json::json!({}));
+    let hooks = hooks
+        .as_object_mut()
+        .ok_or("hooks config .hooks must be a JSON object")?;
+    let session_start = hooks
+        .entry("SessionStart".to_string())
+        .or_insert_with(|| JsonValue::Array(Vec::new()));
+    let session_start = session_start
+        .as_array_mut()
+        .ok_or("hooks config .hooks.SessionStart must be an array")?;
+
+    let index = session_start
+        .iter()
+        .position(|entry| entry.get("matcher").and_then(JsonValue::as_str) == Some(matcher));
+    let index = match index {
+        Some(index) => index,
+        None => {
+            session_start.push(serde_json::json!({
+                "matcher": matcher,
+                "hooks": []
+            }));
+            session_start.len() - 1
+        }
+    };
+
+    let entry = session_start
+        .get_mut(index)
+        .and_then(JsonValue::as_object_mut)
+        .ok_or("SessionStart entry must be a JSON object")?;
+    let hooks = entry
+        .entry("hooks".to_string())
+        .or_insert_with(|| JsonValue::Array(Vec::new()));
+    let hooks = hooks
+        .as_array_mut()
+        .ok_or("SessionStart entry hooks must be an array")?;
+
+    if hooks.iter().any(is_workspace_catalog_hook) {
+        return Ok(false);
+    }
+
+    hooks.push(serde_json::json!({
+        "type": "command",
+        "command": command,
+        "timeout": 5
+    }));
+    Ok(true)
+}
+
+fn uninstall_session_hook(config: &mut JsonValue) -> usize {
+    let Some(session_start) = config
+        .get_mut("hooks")
+        .and_then(|hooks| hooks.get_mut("SessionStart"))
+        .and_then(JsonValue::as_array_mut)
+    else {
+        return 0;
+    };
+
+    let mut removed = 0;
+    for entry in session_start {
+        if let Some(hooks) = entry.get_mut("hooks").and_then(JsonValue::as_array_mut) {
+            let before = hooks.len();
+            hooks.retain(|hook| !is_workspace_catalog_hook(hook));
+            removed += before - hooks.len();
+        }
+    }
+    removed
+}
+
+fn installed_session_hook_events(config: &JsonValue) -> Vec<String> {
+    config
+        .get("hooks")
+        .and_then(|hooks| hooks.get("SessionStart"))
+        .and_then(JsonValue::as_array)
+        .into_iter()
+        .flatten()
+        .filter(|entry| {
+            entry
+                .get("hooks")
+                .and_then(JsonValue::as_array)
+                .map(|hooks| hooks.iter().any(is_workspace_catalog_hook))
+                .unwrap_or(false)
+        })
+        .filter_map(|entry| {
+            entry
+                .get("matcher")
+                .and_then(JsonValue::as_str)
+                .map(str::to_string)
+        })
+        .collect()
+}
+
+fn is_workspace_catalog_hook(hook: &JsonValue) -> bool {
+    hook.get("command")
+        .and_then(JsonValue::as_str)
+        .map(|command| command.contains("workspace-catalog-session-preflight"))
+        .unwrap_or(false)
+}
+
+fn workspace_session_hook_command() -> Result<String, String> {
+    let home = env::var("HOME").map_err(to_string)?;
+    Ok(format!(
+        "'{}/.local/bin/workspace-catalog-session-preflight'",
+        home
+    ))
 }
 
 fn create_status_snapshot(root: &Path) -> Result<StatusSnapshot, String> {
@@ -1738,6 +1961,77 @@ tools: []
             Some("Coordinate split repos.".to_string())
         );
         assert!(format_next_question(&queue).contains("[workspace.orientation]"));
+    }
+
+    #[test]
+    fn install_session_hook_adds_strict_mode_hooks_once() {
+        let mut config = serde_json::json!({
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "matcher": "startup",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "'/Users/demo/.codex/hooks/cbm-session-reminder'"
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+
+        assert!(
+            install_session_hook_with_command(
+                &mut config,
+                "'/Users/demo/.local/bin/workspace-catalog-session-preflight'"
+            )
+            .unwrap()
+        );
+        assert!(
+            !install_session_hook_with_command(
+                &mut config,
+                "'/Users/demo/.local/bin/workspace-catalog-session-preflight'"
+            )
+            .unwrap()
+        );
+
+        let events = installed_session_hook_events(&config);
+        assert_eq!(events, vec!["startup", "resume", "clear", "compact"]);
+    }
+
+    #[test]
+    fn uninstall_session_hook_removes_only_workspace_catalog_hooks() {
+        let mut config = serde_json::json!({
+            "hooks": {
+                "SessionStart": [
+                    {
+                        "matcher": "startup",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": "'/Users/demo/.codex/hooks/cbm-session-reminder'"
+                            },
+                            {
+                                "type": "command",
+                                "command": "'/Users/demo/.local/bin/workspace-catalog-session-preflight'",
+                                "timeout": 5
+                            }
+                        ]
+                    }
+                ]
+            }
+        });
+
+        assert_eq!(uninstall_session_hook(&mut config), 1);
+        let hooks = config["hooks"]["SessionStart"][0]["hooks"]
+            .as_array()
+            .unwrap();
+        assert_eq!(hooks.len(), 1);
+        assert_eq!(
+            hooks[0]["command"].as_str(),
+            Some("'/Users/demo/.codex/hooks/cbm-session-reminder'")
+        );
     }
 
     fn sample_review_draft() -> Value {
