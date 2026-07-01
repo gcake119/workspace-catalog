@@ -275,11 +275,11 @@ fn run_scan(workspace: &Path) -> Result<(), String> {
 
 fn run_review(workspace: &Path) -> Result<(), String> {
     let draft = read_yaml(&draft_path(workspace))?;
-    let output = write_review_report(workspace, &draft).map_err(to_string)?;
+    let queue = load_or_create_review_questions(workspace)?;
+    let output =
+        write_review_report_with_queue(workspace, &draft, Some(&queue)).map_err(to_string)?;
     println!("Wrote {}", output.display());
-    let questions_output = write_review_questions(workspace, &draft).map_err(to_string)?;
-    println!("Wrote {}", questions_output.display());
-    println!("{}", format_review_report(&draft));
+    println!("{}", format_review_report_with_queue(&draft, Some(&queue)));
     Ok(())
 }
 
@@ -655,6 +655,20 @@ fn write_review_report(root: &Path, draft: &Value) -> io::Result<PathBuf> {
     Ok(output)
 }
 
+fn write_review_report_with_queue(
+    root: &Path,
+    draft: &Value,
+    queue: Option<&ReviewQuestionQueue>,
+) -> io::Result<PathBuf> {
+    fs::create_dir_all(catalog_dir(root))?;
+    let output = catalog_dir(root).join(REVIEW_FILE);
+    fs::write(
+        &output,
+        format!("{}\n", format_review_report_with_queue(draft, queue)),
+    )?;
+    Ok(output)
+}
+
 fn write_review_questions(root: &Path, draft: &Value) -> io::Result<PathBuf> {
     fs::create_dir_all(catalog_dir(root))?;
     let queue = build_review_question_queue(draft);
@@ -776,11 +790,23 @@ fn parse_answer_arg(args: &[String]) -> Result<String, String> {
 }
 
 fn format_review_report(draft: &Value) -> String {
+    format_review_report_with_queue(draft, None)
+}
+
+fn format_review_report_with_queue(draft: &Value, queue: Option<&ReviewQuestionQueue>) -> String {
     let empty = Value::Null;
     let workspace = draft.get("workspace").unwrap_or(&empty);
     let workspace_name = plain_field(workspace, "name");
-    let workspace_purpose = plain_field(workspace, "purpose");
-    let workspace_orientation = plain_field(workspace, "orientation");
+    let workspace_purpose = answered_value(
+        queue,
+        "workspace.purpose",
+        plain_field(workspace, "purpose"),
+    );
+    let workspace_orientation = answered_value(
+        queue,
+        "workspace.orientation",
+        plain_field(workspace, "orientation"),
+    );
 
     let mut lines = vec![
         "# Workspace Catalog Review".to_string(),
@@ -808,7 +834,11 @@ fn format_review_report(draft: &Value) -> String {
         lines.extend(tools.iter().map(|tool| {
             let id = plain_field(tool, "id");
             let path = plain_field(tool, "path");
-            let role = plain_field(tool, "role");
+            let role = answered_value(
+                queue,
+                &format!("tools.{id}.role"),
+                plain_field(tool, "role"),
+            );
             format!("- {id}：{path}，角色：{role}")
         }));
     }
@@ -829,29 +859,46 @@ fn format_review_report(draft: &Value) -> String {
     ));
     for tool in &tools {
         let id = plain_field(tool, "id");
-        let skills = plain_field(tool, "recommended_skills");
+        let skills = answered_value(
+            queue,
+            &format!("tools.{id}.skills"),
+            plain_field(tool, "recommended_skills"),
+        );
         lines.push(format!("- {id} 適用 skills：{skills}"));
     }
 
-    lines.extend([
-        "".to_string(),
-        "## 4. 需要使用者確認或補充".to_string(),
-        "".to_string(),
-    ]);
-    let questions = draft
-        .get("questions")
-        .and_then(Value::as_sequence)
-        .cloned()
-        .unwrap_or_default();
-    if questions.is_empty() {
-        lines.push("- 目前沒有額外問題。".to_string());
-    } else {
-        lines.extend(
-            questions
-                .iter()
-                .filter_map(Value::as_str)
-                .map(|question| format!("- {}", plain_question(question))),
-        );
+    lines.extend(["".to_string(), "## 4. 確認進度".to_string(), "".to_string()]);
+    match queue {
+        Some(queue) if queue.questions.is_empty() => {
+            lines.push("- 目前沒有 review 問題。".to_string());
+        }
+        Some(queue) => {
+            for question in &queue.questions {
+                if question.status == "answered" {
+                    let answer = question.answer.as_deref().unwrap_or("");
+                    lines.push(format!("- 已回答 [{}]：{answer}", question.id));
+                } else {
+                    lines.push(format!("- 待確認 [{}]：{}", question.id, question.question));
+                }
+            }
+        }
+        None => {
+            let questions = draft
+                .get("questions")
+                .and_then(Value::as_sequence)
+                .cloned()
+                .unwrap_or_default();
+            if questions.is_empty() {
+                lines.push("- 目前沒有額外問題。".to_string());
+            } else {
+                lines.extend(
+                    questions
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .map(|question| format!("- {}", plain_question(question))),
+                );
+            }
+        }
     }
 
     lines.extend([
@@ -864,6 +911,19 @@ fn format_review_report(draft: &Value) -> String {
         "確認前不會寫入 .workspace-catalog/catalog.yaml。".to_string(),
     ]);
     lines.join("\n")
+}
+
+fn answered_value(queue: Option<&ReviewQuestionQueue>, id: &str, fallback: String) -> String {
+    queue
+        .and_then(|queue| {
+            queue
+                .questions
+                .iter()
+                .find(|question| question.id == id && question.status == "answered")
+        })
+        .and_then(|question| question.answer.clone())
+        .filter(|answer| !answer.trim().is_empty())
+        .unwrap_or(fallback)
 }
 
 fn create_preflight_report(root: &Path, args: &[String]) -> Result<PreflightReport, String> {
@@ -1961,6 +2021,73 @@ tools: []
             Some("Coordinate split repos.".to_string())
         );
         assert!(format_next_question(&queue).contains("[workspace.orientation]"));
+    }
+
+    #[test]
+    fn review_preserves_answered_questions_and_next_question_progress() {
+        let root = temp_workspace("review-preserves-answers");
+        let draft = sample_review_draft();
+        fs::create_dir_all(catalog_dir(&root)).unwrap();
+        fs::write(draft_path(&root), serde_yaml::to_string(&draft).unwrap()).unwrap();
+        write_review_question_queue(&root, &build_review_question_queue(&draft)).unwrap();
+
+        run_answer_question(
+            &root,
+            &[
+                "workspace.purpose".to_string(),
+                "--answer".to_string(),
+                "Coordinate split repos.".to_string(),
+            ],
+        )
+        .unwrap();
+        run_answer_question(
+            &root,
+            &[
+                "workspace.orientation".to_string(),
+                "--answer".to_string(),
+                "Agents should verify repo boundaries first.".to_string(),
+            ],
+        )
+        .unwrap();
+
+        run_review(&root).unwrap();
+
+        let queue = load_or_create_review_questions(&root).unwrap();
+        assert_eq!(queue.questions[0].status, "answered");
+        assert_eq!(
+            queue.questions[0].answer,
+            Some("Coordinate split repos.".to_string())
+        );
+        assert!(format_next_question(&queue).contains("[tools.tool-a.role]"));
+        let review = fs::read_to_string(catalog_dir(&root).join(REVIEW_FILE)).unwrap();
+        assert!(review.contains("- 目的：Coordinate split repos."));
+        assert!(review.contains("已回答 [workspace.orientation]"));
+    }
+
+    #[test]
+    fn review_does_not_reset_fully_answered_queue() {
+        let root = temp_workspace("review-keeps-complete-queue");
+        let draft = sample_review_draft();
+        fs::create_dir_all(catalog_dir(&root)).unwrap();
+        fs::write(draft_path(&root), serde_yaml::to_string(&draft).unwrap()).unwrap();
+        let mut queue = build_review_question_queue(&draft);
+        for question in &mut queue.questions {
+            question.status = "answered".to_string();
+            question.answer = Some(format!("answer for {}", question.id));
+        }
+        queue.current_index = queue.questions.len();
+        write_review_question_queue(&root, &queue).unwrap();
+
+        run_review(&root).unwrap();
+
+        let queue = load_or_create_review_questions(&root).unwrap();
+        assert!(
+            queue
+                .questions
+                .iter()
+                .all(|question| question.status == "answered")
+        );
+        assert!(format_next_question(&queue).contains("所有 review 問題都已回答"));
     }
 
     #[test]

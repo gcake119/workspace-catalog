@@ -93,6 +93,8 @@ workspace-catalog answer-question /path/to/workspace tools.frontend.role --answe
 workspace-catalog next-question /path/to/workspace
 ```
 
+`workspace-catalog review` can refresh `.workspace-catalog/review.md` without resetting answered questions. Use `scan` when you intentionally want to rescan and start a new review queue.
+
 After the user confirms the meaning, write local memory:
 
 ```bash

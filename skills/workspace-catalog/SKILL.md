@@ -34,6 +34,8 @@ When workspace evidence changes:
 6. Repeat `next-question` until there are no pending questions.
 7. Confirm only after the user approves the final catalog meaning.
 
+`workspace-catalog review <workspace>` may refresh `.workspace-catalog/review.md`, but it must not reset answered questions. Use `scan` only when the user intentionally wants to rescan and start a new review queue.
+
 Never run `confirm` before the user has explicitly approved the catalog semantics.
 
 ## Evidence To Read
